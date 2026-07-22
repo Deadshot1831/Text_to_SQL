@@ -1,0 +1,25 @@
+# --- Core runtime ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+SQLAlchemy==2.0.36
+sqlparse==0.5.3
+pandas==2.2.3
+PyYAML==6.0.2
+
+# --- Database drivers ---
+duckdb==1.1.3             # embedded engine for local dev / evals
+duckdb-engine==0.13.6     # SQLAlchemy dialect for DuckDB
+psycopg[binary]==3.2.3    # PostgreSQL driver (docker-compose)
+
+# --- LLM providers (optional at runtime; stub fallback if unset) ---
+anthropic==0.42.0
+openai==1.59.6
+
+# --- Frontend ---
+streamlit==1.41.1
+
+# --- Dev / test ---
+pytest==8.3.4
+httpx==0.28.1             # FastAPI TestClient

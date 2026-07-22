@@ -1,0 +1,42 @@
+"""Application settings, loaded from environment / .env."""
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Database
+    database_url: str = "duckdb:///./data/demo.duckdb"
+
+    # LLM
+    llm_provider: str = "anthropic"  # anthropic | openai | stub
+    llm_model: str = "claude-sonnet-5"
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+
+    # Guardrails
+    guardrail_default_row_limit: int = 1000
+    guardrail_max_subquery_depth: int = 3
+    guardrail_max_estimated_rows: int = 1_000_000
+    guardrail_statement_timeout_ms: int = 5000
+
+    # App
+    audit_log_path: str = "audit.log"
+
+    @property
+    def effective_provider(self) -> str:
+        """Fall back to the offline stub when the chosen provider has no key."""
+        if self.llm_provider == "anthropic" and not self.anthropic_api_key:
+            return "stub"
+        if self.llm_provider == "openai" and not self.openai_api_key:
+            return "stub"
+        return self.llm_provider
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
