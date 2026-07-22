@@ -79,6 +79,7 @@ class QueryRequest(BaseModel):
     question: str
     row_limit: int | None = None
     multi_query: bool = False  # run the independent second-query check (Phase 3.3)
+    sql_override: str | None = None  # power-user edited SQL; skips generation, still guardrailed
 
 
 class QueryResponse(BaseModel):

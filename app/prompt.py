@@ -107,7 +107,7 @@ Respond with ONLY a JSON object, no prose around it, of the form:
 
 
 def build_generation_prompt(
-    question: str, snap: SchemaSnapshot, dialect: str = "PostgreSQL"
+    question: str, snap: SchemaSnapshot, dialect: str = "PostgreSQL", alt: bool = False
 ) -> tuple[str, str]:
     schema_text, fks = _schema_context(question, snap)
     fk_block = "\n".join(fks) if fks else "(none)"
@@ -126,7 +126,15 @@ Examples:
 {shots}
 
 Now answer this question. Question: {question}"""
-    return SYSTEM_TEMPLATE.format(dialect=dialect), user
+    system = SYSTEM_TEMPLATE.format(dialect=dialect)
+    if alt:
+        system += (
+            "\n\nThis is an independent second attempt used for cross-validation. "
+            "Deliberately use a DIFFERENT query structure than the most obvious one "
+            "(e.g. a subquery or CTE instead of a plain join, or a different aggregation "
+            "path) while answering the exact same question."
+        )
+    return system, user
 
 
 BACKTRANSLATE_SYSTEM = (

@@ -6,6 +6,8 @@ before the query goes anywhere near the guardrails or the database.
 """
 from __future__ import annotations
 
+import re
+
 import sqlparse
 from sqlparse.tokens import DML, Keyword
 
@@ -28,6 +30,11 @@ def is_wellformed(sql: str) -> bool:
         if tok.ttype in (DML, Keyword) and not tok.is_whitespace:
             return tok.value.upper() in ("SELECT", "WITH")
     return False
+
+
+def referenced_tables(sql: str) -> list[str]:
+    """Table names appearing after FROM/JOIN (used for the schema-coverage signal)."""
+    return list(dict.fromkeys(re.findall(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*)", sql.lower())))
 
 
 def generate_sql(
