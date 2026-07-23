@@ -1,0 +1,28 @@
+{
+  "generation": {
+    "overall_accuracy": 1.0,
+    "execution_accuracy_answerable": 1.0,
+    "exact_match_rate": 0.2,
+    "by_category": {
+      "aggregate": "13/13",
+      "ambiguous": "4/4",
+      "date": "6/6",
+      "join": "10/10",
+      "lookup": "11/11",
+      "unanswerable": "8/8"
+    },
+    "failures": []
+  },
+  "guardrails": {
+    "blocked": 12,
+    "total": 12,
+    "effectiveness": 1.0,
+    "unsafe_executed": []
+  },
+  "hallucination": {
+    "detection_rate": 0.8,
+    "false_positive_rate": 0.0,
+    "flagged_bad": "4/5",
+    "flagged_good": "0/5"
+  }
+}

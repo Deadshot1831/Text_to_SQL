@@ -39,6 +39,16 @@ def test_hallucination_low_alignment_flagged():
     assert r.confidence.overall < 0.75  # dragged down by the mismatch
 
 
+def test_entity_mismatch_flagged():
+    # Question is about customers, but the SQL only touches orders.
+    r = answer(QueryRequest(
+        question="how many customers do we have?",
+        sql_override="SELECT COUNT(*) FROM orders",
+    ))
+    assert any(f.check == "entity_mismatch" for f in r.validation.sanity_flags)
+    assert any("customers" in w for w in r.warnings)
+
+
 def test_guardrail_injects_limit_in_response():
     r = answer(QueryRequest(question="list all products"))
     assert "LIMIT" in r.guardrail.final_sql.upper()

@@ -1,0 +1,70 @@
+# Golden regression dataset. `expect` is one of:
+#   answerable   -> pipeline must return status=ok; results compared to reference_sql
+#   ambiguous    -> pipeline must return status=clarification_needed
+#   unanswerable -> pipeline must return status=error (no SQL produced)
+
+# ---------- simple lookups ----------
+- {id: g01, category: lookup, expect: answerable, question: "How many customers do we have?", reference_sql: "SELECT COUNT(*) FROM customers;"}
+- {id: g02, category: lookup, expect: answerable, question: "How many products are in the catalog?", reference_sql: "SELECT COUNT(*) FROM products;"}
+- {id: g03, category: lookup, expect: answerable, question: "How many orders have been placed?", reference_sql: "SELECT COUNT(*) FROM orders;"}
+- {id: g04, category: lookup, expect: answerable, question: "List all products with their price.", reference_sql: "SELECT name, price FROM products ORDER BY name;"}
+- {id: g05, category: lookup, expect: answerable, question: "List all customers and their country.", reference_sql: "SELECT name, country FROM customers ORDER BY name;"}
+- {id: g06, category: lookup, expect: answerable, question: "Which products are out of stock?", reference_sql: "SELECT name FROM products WHERE in_stock = FALSE;"}
+- {id: g07, category: lookup, expect: answerable, question: "Which products are in stock?", reference_sql: "SELECT name FROM products WHERE in_stock = TRUE;"}
+- {id: g08, category: lookup, expect: answerable, question: "What is the most expensive product?", reference_sql: "SELECT name, price FROM products ORDER BY price DESC LIMIT 1;"}
+- {id: g09, category: lookup, expect: answerable, question: "What is the cheapest product?", reference_sql: "SELECT name, price FROM products ORDER BY price ASC LIMIT 1;"}
+
+# ---------- multi-table joins ----------
+- {id: g10, category: join, expect: answerable, question: "List the products in the Electronics category.", reference_sql: "SELECT p.name, p.price FROM products p JOIN categories c ON p.category_id=c.category_id WHERE c.name='Electronics';"}
+- {id: g11, category: join, expect: answerable, question: "Show the products in the Books category.", reference_sql: "SELECT p.name, p.price FROM products p JOIN categories c ON p.category_id=c.category_id WHERE c.name='Books';"}
+- {id: g12, category: join, expect: answerable, question: "List the products in the Clothing category.", reference_sql: "SELECT p.name, p.price FROM products p JOIN categories c ON p.category_id=c.category_id WHERE c.name='Clothing';"}
+- {id: g13, category: join, expect: answerable, question: "Show me products in the Home category.", reference_sql: "SELECT p.name, p.price FROM products p JOIN categories c ON p.category_id=c.category_id WHERE c.name='Home';"}
+- {id: g14, category: join, expect: answerable, question: "List the products in the Toys category.", reference_sql: "SELECT p.name, p.price FROM products p JOIN categories c ON p.category_id=c.category_id WHERE c.name='Toys';"}
+- {id: g15, category: join, expect: answerable, question: "Which customers have never placed an order?", reference_sql: "SELECT c.name FROM customers c LEFT JOIN orders o ON c.customer_id=o.customer_id WHERE o.order_id IS NULL;"}
+- {id: g16, category: join, expect: answerable, question: "List customers from Germany.", reference_sql: "SELECT name, email FROM customers WHERE country='Germany';"}
+- {id: g17, category: join, expect: answerable, question: "List customers from India.", reference_sql: "SELECT name, email FROM customers WHERE country='India';"}
+- {id: g18, category: join, expect: answerable, question: "Which customers are from Canada?", reference_sql: "SELECT name, email FROM customers WHERE country='Canada';"}
+- {id: g19, category: join, expect: answerable, question: "List customers from the USA.", reference_sql: "SELECT name, email FROM customers WHERE country='USA';"}
+
+# ---------- aggregations / group by ----------
+- {id: g20, category: aggregate, expect: answerable, question: "What is the total gross revenue across all orders?", reference_sql: "SELECT SUM(quantity*unit_price) FROM order_items;"}
+- {id: g21, category: aggregate, expect: answerable, question: "What is the net revenue from completed orders?", reference_sql: "SELECT SUM(oi.quantity*oi.unit_price) FROM order_items oi JOIN orders o ON oi.order_id=o.order_id WHERE o.status='completed';"}
+- {id: g22, category: aggregate, expect: answerable, question: "What is the gross revenue by category?", reference_sql: "SELECT c.name, SUM(oi.quantity*oi.unit_price) FROM order_items oi JOIN products p ON oi.product_id=p.product_id JOIN categories c ON p.category_id=c.category_id GROUP BY c.name;"}
+- {id: g23, category: aggregate, expect: answerable, question: "What are the top 5 products by gross revenue?", reference_sql: "SELECT p.name, SUM(oi.quantity*oi.unit_price) AS r FROM order_items oi JOIN products p ON oi.product_id=p.product_id GROUP BY p.name ORDER BY r DESC LIMIT 5;"}
+- {id: g24, category: aggregate, expect: answerable, question: "What are the top products by units sold?", reference_sql: "SELECT p.name, SUM(oi.quantity) AS u FROM order_items oi JOIN products p ON oi.product_id=p.product_id GROUP BY p.name ORDER BY u DESC LIMIT 5;"}
+- {id: g25, category: aggregate, expect: answerable, question: "How many orders has each customer placed?", reference_sql: "SELECT c.name, COUNT(o.order_id) FROM customers c LEFT JOIN orders o ON c.customer_id=o.customer_id GROUP BY c.name;"}
+- {id: g26, category: aggregate, expect: answerable, question: "How many customers are there per country?", reference_sql: "SELECT country, COUNT(*) FROM customers GROUP BY country;"}
+- {id: g27, category: aggregate, expect: answerable, question: "What is the average order value?", reference_sql: "SELECT AVG(t.order_total) FROM (SELECT o.order_id, SUM(oi.quantity*oi.unit_price) AS order_total FROM orders o JOIN order_items oi ON o.order_id=oi.order_id GROUP BY o.order_id) t;"}
+- {id: g28, category: aggregate, expect: answerable, question: "How many orders are completed?", reference_sql: "SELECT COUNT(*) FROM orders WHERE status='completed';"}
+- {id: g29, category: aggregate, expect: answerable, question: "How many orders were cancelled?", reference_sql: "SELECT COUNT(*) FROM orders WHERE status='cancelled';"}
+- {id: g30, category: aggregate, expect: answerable, question: "How many orders are pending?", reference_sql: "SELECT COUNT(*) FROM orders WHERE status='pending';"}
+- {id: g31, category: aggregate, expect: answerable, question: "How many orders were refunded?", reference_sql: "SELECT COUNT(*) FROM orders WHERE status='refunded';"}
+- {id: g32, category: aggregate, expect: answerable, question: "What is the total quantity of items sold?", reference_sql: "SELECT SUM(quantity) FROM order_items;"}
+
+# ---------- date-range filters ----------
+- {id: g33, category: date, expect: answerable, question: "How many orders were placed in 2023?", reference_sql: "SELECT COUNT(*) FROM orders WHERE EXTRACT(YEAR FROM order_date)=2023;"}
+- {id: g34, category: date, expect: answerable, question: "How many orders were placed in 2024?", reference_sql: "SELECT COUNT(*) FROM orders WHERE EXTRACT(YEAR FROM order_date)=2024;"}
+- {id: g35, category: date, expect: answerable, question: "List the orders from 2023.", reference_sql: "SELECT order_id, customer_id, order_date, status FROM orders WHERE EXTRACT(YEAR FROM order_date)=2023 ORDER BY order_date;"}
+- {id: g36, category: date, expect: answerable, question: "List completed orders from 2024.", reference_sql: "SELECT order_id, customer_id, order_date, status FROM orders WHERE status='completed' AND EXTRACT(YEAR FROM order_date)=2024 ORDER BY order_date;"}
+- {id: g37, category: date, expect: answerable, question: "How many completed orders were placed in 2024?", reference_sql: "SELECT COUNT(*) FROM orders WHERE status='completed' AND EXTRACT(YEAR FROM order_date)=2024;"}
+- {id: g38, category: date, expect: answerable, question: "List the cancelled orders.", reference_sql: "SELECT order_id, customer_id, order_date, status FROM orders WHERE status='cancelled' ORDER BY order_date;"}
+
+# ---------- ambiguous phrasing ----------
+- {id: g39, category: ambiguous, expect: ambiguous, question: "What is our revenue?"}
+- {id: g40, category: ambiguous, expect: ambiguous, question: "Show me the total sales."}
+- {id: g41, category: ambiguous, expect: ambiguous, question: "How much revenue did we make?"}
+- {id: g42, category: ambiguous, expect: ambiguous, question: "What were our sales last period?"}
+
+# ---------- unanswerable from this schema ----------
+- {id: g43, category: unanswerable, expect: unanswerable, question: "What was the weather on each order date?"}
+- {id: g44, category: unanswerable, expect: unanswerable, question: "Who is the supplier for each product?"}
+- {id: g45, category: unanswerable, expect: unanswerable, question: "Show me employee salaries."}
+- {id: g46, category: unanswerable, expect: unanswerable, question: "What is the average product rating?"}
+- {id: g47, category: unanswerable, expect: unanswerable, question: "What are the customer phone numbers?"}
+- {id: g48, category: unanswerable, expect: unanswerable, question: "List all discount codes that were used."}
+- {id: g49, category: unanswerable, expect: unanswerable, question: "Show me each product review."}
+- {id: g50, category: unanswerable, expect: unanswerable, question: "What is the shipping address for order 5?"}
+
+# ---------- a few more lookups to round out coverage ----------
+- {id: g51, category: lookup, expect: answerable, question: "List all products.", reference_sql: "SELECT name, price FROM products ORDER BY name;"}
+- {id: g52, category: lookup, expect: answerable, question: "List all customers.", reference_sql: "SELECT name, country FROM customers ORDER BY name;"}

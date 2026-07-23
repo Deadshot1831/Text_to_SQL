@@ -77,7 +77,7 @@ def answer(req: QueryRequest) -> QueryResponse:
     # Phase 3 — hallucination detection.
     bt = back_translate(guard.final_sql, snap)
     align = alignment(q, bt)
-    flags = sanity_checks(q, execution, guard.final_sql)
+    flags = sanity_checks(q, execution, guard.final_sql, snap)
     spr = sanity_pass_rate(flags)
 
     mq_result = None

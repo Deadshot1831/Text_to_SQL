@@ -12,6 +12,7 @@ import re
 from sqlalchemy import Engine
 
 from app.execute import run_query
+from app.generate import referenced_tables
 from app.guardrails import apply_guardrails
 from app.llm import complete, parse_json_block
 from app.models import ExecutionResult, MultiQueryResult, SanityFlag
@@ -66,11 +67,18 @@ def back_translate(sql: str, snap: SchemaSnapshot) -> str:
     return complete(system, user, max_tokens=120).strip()
 
 
-def sanity_checks(question: str, execution: ExecutionResult, sql: str) -> list[SanityFlag]:
+def sanity_checks(
+    question: str, execution: ExecutionResult, sql: str, snap: SchemaSnapshot | None = None
+) -> list[SanityFlag]:
     flags: list[SanityFlag] = []
     if execution.error:
         flags.append(SanityFlag(check="execution", severity="warn", message=f"query errored: {execution.error}"))
         return flags
+
+    if snap is not None:
+        mismatch = entity_mismatch_flag(question, sql, snap)
+        if mismatch:
+            flags.append(mismatch)
 
     if execution.row_count == 0:
         sev = "warn" if " join " in f" {sql.lower()} " else "info"
@@ -95,6 +103,25 @@ def sanity_checks(question: str, execution: ExecutionResult, sql: str) -> list[S
     if not flags:
         flags.append(SanityFlag(check="basic", severity="info", message="no anomalies detected"))
     return flags
+
+
+def entity_mismatch_flag(question: str, sql: str, snap: SchemaSnapshot) -> SanityFlag | None:
+    """Flag when the question names an entity table the SQL never touches.
+
+    Catches hallucinations that back-translation misses because the operation
+    matches but the subject is wrong (e.g. "how many customers" answered by a
+    query over `orders`).
+    """
+    q_tokens = _content_tokens(question)
+    q_tables = {t for t in snap.tables if _canon(t) in q_tokens}
+    refs = set(referenced_tables(sql))
+    if q_tables and not (q_tables & refs):
+        return SanityFlag(
+            check="entity_mismatch",
+            severity="warn",
+            message=f"question is about {sorted(q_tables)} but the SQL queries {sorted(refs) or 'nothing'}",
+        )
+    return None
 
 
 def sanity_pass_rate(flags: list[SanityFlag]) -> float:

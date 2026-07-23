@@ -42,9 +42,8 @@ def _find(options: list[str], q: str) -> str | None:
 
 def question_to_sql(question: str) -> tuple[str, str, list[str], list[str], float]:
     q = question.lower().strip()
-    year = (re.search(r"\b(20\d{2})\b", q) or [None, None])[1] if re.search(r"\b20\d{2}\b", q) else None
-    if year:
-        year = re.search(r"\b(20\d{2})\b", q).group(1)
+    ym = re.search(r"\b(20\d{2})\b", q)
+    year = ym.group(1) if ym else None
     status = _find(STATUSES, q)
     category = _find(CATEGORIES, q)
     country = _find(COUNTRIES, q)
@@ -53,6 +52,23 @@ def question_to_sql(question: str) -> tuple[str, str, list[str], list[str], floa
     oos = _find(OUT_OF_SCHEMA, q)
     if oos:
         return "", f"The schema has no {oos} data, so this question cannot be answered.", [], [], 0.5
+
+    # --- most expensive / cheapest product (before the generic 'top products') ---
+    if "product" in q and ("most expensive" in q or "highest price" in q):
+        return "SELECT name, price FROM products ORDER BY price DESC LIMIT 1;", "The most expensive product.", ["products"], ["name", "price"], 0.7
+    if "product" in q and ("cheapest" in q or "lowest price" in q):
+        return "SELECT name, price FROM products ORDER BY price ASC LIMIT 1;", "The cheapest product.", ["products"], ["name", "price"], 0.7
+
+    # --- top / best products (before the revenue family so "top … by revenue" routes here) ---
+    if ("top" in q or "best" in q or "most" in q) and "product" in q:
+        by_rev = "revenue" in q or "money" in q or "sales" in q
+        metric, alias = (_REVENUE_EXPR, "revenue") if by_rev else ("SUM(oi.quantity)", "units_sold")
+        sql = (
+            f"SELECT p.name, {metric} AS {alias}\n"
+            "FROM order_items oi JOIN products p ON oi.product_id = p.product_id\n"
+            f"GROUP BY p.name\nORDER BY {alias} DESC\nLIMIT 5;"
+        )
+        return sql, f"Top 5 products by {alias}.", ["order_items", "products"], ["quantity", "unit_price", "name"], 0.6
 
     # --- revenue family (ambiguity already handled upstream) ---
     if "revenue" in q or "sales" in q:
@@ -85,15 +101,9 @@ def question_to_sql(question: str) -> tuple[str, str, list[str], list[str], floa
         )
         return sql, "Average total value per order.", ["orders", "order_items"], ["quantity", "unit_price"], 0.6
 
-    # --- top products ---
-    if ("top" in q or "best" in q or "most" in q) and "product" in q:
-        metric, alias = (f"{_REVENUE_EXPR}", "revenue") if ("revenue" in q or "money" in q) else ("SUM(oi.quantity)", "units_sold")
-        sql = (
-            f"SELECT p.name, {metric} AS {alias}\n"
-            "FROM order_items oi JOIN products p ON oi.product_id = p.product_id\n"
-            f"GROUP BY p.name\nORDER BY {alias} DESC\nLIMIT 5;"
-        )
-        return sql, f"Top 5 products by {alias}.", ["order_items", "products"], ["quantity", "unit_price", "name"], 0.6
+    # --- total quantity sold ---
+    if ("quantity" in q or "items sold" in q or "units sold" in q) and ("total" in q or "how many" in q or "sum" in q):
+        return "SELECT SUM(quantity) AS total_quantity FROM order_items;", "Total quantity of items sold.", ["order_items"], ["quantity"], 0.65
 
     # --- stock ---
     if "out of stock" in q or ("not" in q and "stock" in q):
@@ -133,22 +143,19 @@ def question_to_sql(question: str) -> tuple[str, str, list[str], list[str], floa
         )
         return sql, "Number of orders per customer.", ["customers", "orders"], ["name"], 0.65
 
-    # --- most expensive / cheapest product ---
-    if "product" in q and ("most expensive" in q or "highest price" in q):
-        return "SELECT name, price FROM products ORDER BY price DESC LIMIT 1;", "The most expensive product.", ["products"], ["name", "price"], 0.7
-    if "product" in q and ("cheapest" in q or "lowest price" in q):
-        return "SELECT name, price FROM products ORDER BY price ASC LIMIT 1;", "The cheapest product.", ["products"], ["name", "price"], 0.7
-
-    # --- counts ---
-    if "how many" in q or "number of" in q or "count" in q:
+    # --- counts (\bcount\b so 'country' does not match) ---
+    if "how many" in q or "number of" in q or re.search(r"\bcount\b", q):
         if "customer" in q:
             return "SELECT COUNT(*) AS customer_count FROM customers;", "Total number of customers.", ["customers"], [], 0.75
         if "product" in q:
             return "SELECT COUNT(*) AS product_count FROM products;", "Total number of products.", ["products"], [], 0.75
         if "order" in q:
-            where = f" WHERE status = '{status}'" if status else ""
+            conds = []
+            if status:
+                conds.append(f"status = '{status}'")
             if year:
-                where = (where + (" AND" if where else " WHERE") + f" EXTRACT(YEAR FROM order_date) = {year}")
+                conds.append(f"EXTRACT(YEAR FROM order_date) = {year}")
+            where = (" WHERE " + " AND ".join(conds)) if conds else ""
             return f"SELECT COUNT(*) AS order_count FROM orders{where};", "Number of orders.", ["orders"], ["status", "order_date"], 0.7
 
     # --- orders by status / year (list) ---
@@ -218,10 +225,12 @@ def describe_sql(sql: str) -> str:
 
 
 if __name__ == "__main__":  # self-check
-    sql, *_ = question_to_sql("what is the revenue by category")
-    assert "GROUP BY c.name" in sql
+    assert "GROUP BY c.name" in question_to_sql("what is the revenue by category")[0]
     assert question_to_sql("show me the weather")[0] == ""  # unanswerable
     assert "COUNT(*)" in question_to_sql("how many customers do we have")[0]
+    assert "ORDER BY price DESC" in question_to_sql("what is the most expensive product")[0]  # not 'top products'
+    assert "customers" in question_to_sql("list all customers and their country")[0].lower()  # not a count of 'country'
+    assert "ORDER BY revenue DESC" in question_to_sql("top 5 products by gross revenue")[0]
     d = describe_sql("SELECT COUNT(*) FROM orders WHERE status = 'completed'")
     assert "number of records" in d and "completed" in d, d
     print("stub_sql OK")
