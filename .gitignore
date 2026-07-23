@@ -20,6 +20,7 @@ data/
 .idea/
 .vscode/
 
-# Logs
+# Logs / runtime artifacts
 *.log
 audit.log
+feedback.jsonl
