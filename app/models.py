@@ -85,6 +85,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     question: str
     status: str  # ok | clarification_needed | blocked | error
+    query_id: int | None = None
     clarification: Clarification | None = None
     generated: GeneratedSQL | None = None
     guardrail: GuardrailResult | None = None

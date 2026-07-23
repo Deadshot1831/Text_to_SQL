@@ -1,0 +1,3 @@
+{"ts": 1784746633.588, "query_id": 3, "label": "correct", "note": "", "question": "list all products", "sql": "SELECT name, price FROM products ORDER BY name;"}
+{"ts": 1784828081.087, "query_id": 2, "label": "correct", "note": "", "question": "gross revenue by category", "sql": "SELECT c.name AS category, SUM(oi.quantity * oi.unit_price) AS revenue\nFROM order_items oi\nJOIN products p ON oi.product_id = p.product_id\nJOIN categories c ON p.category_id = c.category_id\nGROUP BY c.name\nORDER BY revenue DESC;"}
+{"ts": 1784829586.546, "query_id": 3, "label": "correct", "note": "", "question": "list all products", "sql": "SELECT name, price FROM products ORDER BY name;"}

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # App
     audit_log_path: str = "audit.log"
+    feedback_log_path: str = "feedback.jsonl"
 
     @property
     def effective_provider(self) -> str:

@@ -79,6 +79,30 @@ class SchemaSnapshot:
             blocks.append("\n".join(lines))
         return "\n\n".join(blocks)
 
+    def to_dict(self) -> dict:
+        """Serializable schema for the GET /v1/schema endpoint."""
+        return {
+            "tables": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "columns": [
+                        {
+                            "name": c.name,
+                            "type": c.type,
+                            "nullable": c.nullable,
+                            "primary_key": c.is_pk,
+                            "foreign_key": c.fk_ref,
+                            "sample_values": [str(s) for s in c.samples],
+                        }
+                        for c in t.columns
+                    ],
+                }
+                for t in self.tables.values()
+            ],
+            "foreign_keys": self.foreign_keys(),
+        }
+
     def foreign_keys(self, only: list[str] | None = None) -> list[str]:
         names = set(only) if only else set(self.tables)
         out = []

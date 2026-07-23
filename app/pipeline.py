@@ -83,7 +83,9 @@ def answer(req: QueryRequest) -> QueryResponse:
     mq_result = None
     mq_agree = None
     if req.multi_query and execution.error is None:
-        mq_result = multi_query_check(q, guard.final_sql, execution, snap, engine, dialect)
+        # Compare against the pre-guardrail SQL so an offline stub that reproduces
+        # the same query is disclosed honestly instead of looking like two strategies.
+        mq_result = multi_query_check(q, gen.sql, execution, snap, engine, dialect)
         mq_agree = mq_result.agree
 
     validation = ValidationReport(
