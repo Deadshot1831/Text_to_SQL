@@ -1,0 +1,720 @@
+<title>Text-to-SQL with Guardrails — Live Demo</title>
+<style>
+  :root {
+    /* light (base) — a cool daylight console */
+    --ink:#EAF1EF; --panel:#FFFFFF; --panel-2:#F4F9F7; --line:#D3E0DD;
+    --text:#0F1F1D; --muted:#4E635E; --faint:#7C8D89;
+    --accent:#0F8177; --accent-soft:#D2ECE7;
+    --ok:#17925F; --warn:#A96E0F; --bad:#BE3841;
+    --shadow: 0 1px 2px rgba(16,40,36,.06), 0 8px 30px rgba(16,40,36,.06);
+    --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#0A0F12; --panel:#111A1E; --panel-2:#0D1519; --line:#20313A;
+      --text:#DBE5E3; --muted:#8598A0; --faint:#5E7178;
+      --accent:#45C4B4; --accent-soft:#0F312E;
+      --ok:#4FBE8C; --warn:#DCA948; --bad:#E1626C;
+      --shadow: 0 1px 0 rgba(255,255,255,.02), 0 14px 40px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"]{
+    --ink:#EAF1EF; --panel:#FFFFFF; --panel-2:#F4F9F7; --line:#D3E0DD;
+    --text:#0F1F1D; --muted:#4E635E; --faint:#7C8D89;
+    --accent:#0F8177; --accent-soft:#D2ECE7;
+    --ok:#17925F; --warn:#A96E0F; --bad:#BE3841;
+    --shadow: 0 1px 2px rgba(16,40,36,.06), 0 8px 30px rgba(16,40,36,.06);
+  }
+  :root[data-theme="dark"]{
+    --ink:#0A0F12; --panel:#111A1E; --panel-2:#0D1519; --line:#20313A;
+    --text:#DBE5E3; --muted:#8598A0; --faint:#5E7178;
+    --accent:#45C4B4; --accent-soft:#0F312E;
+    --ok:#4FBE8C; --warn:#DCA948; --bad:#E1626C;
+    --shadow: 0 1px 0 rgba(255,255,255,.02), 0 14px 40px rgba(0,0,0,.4);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--ink); color:var(--text);
+    font-family:var(--sans); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%);
+    background-repeat:no-repeat;
+  }
+  .wrap{ max-width:960px; margin:0 auto; padding:0 24px; }
+  .mono{ font-family:var(--mono); }
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--faint); font-weight:600;
+  }
+  a{ color:var(--accent); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  h1,h2,h3{ font-family:var(--mono); font-weight:700; text-wrap:balance; letter-spacing:-.02em; margin:0; }
+  code{ font-family:var(--mono); }
+
+  /* ---------- hero ---------- */
+  header{ padding:72px 0 40px; border-bottom:1px solid var(--line); position:relative; }
+  .kicker{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:22px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 22%, transparent); }
+  h1.title{ font-size:clamp(30px,5.6vw,50px); line-height:1.03; margin:0 0 16px; }
+  h1.title .thin{ color:var(--muted); font-weight:500; }
+  .lede{ font-size:18px; color:var(--muted); max-width:60ch; margin:0; }
+
+  .console{
+    margin-top:30px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:12px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .console-bar{
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--panel) 60%, transparent);
+  }
+  .tl{ width:11px; height:11px; border-radius:50%; background:var(--line); }
+  .console-bar span{ margin-left:8px; font-family:var(--mono); font-size:11.5px; color:var(--faint); letter-spacing:.04em; }
+  .console-body{ padding:18px 18px 20px; font-family:var(--mono); font-size:13.5px; overflow-x:auto; }
+  .q-line{ color:var(--text); white-space:nowrap; }
+  .q-line b{ color:var(--accent); font-weight:700; }
+  .sql-teaser{ color:var(--muted); margin:10px 0 0; padding-left:16px; white-space:pre; }
+  .sql-teaser .kw{ color:var(--accent); }
+  .caret{ display:inline-block; width:8px; height:15px; background:var(--accent); vertical-align:-2px; margin-left:3px; animation:blink 1.15s steps(1) infinite; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .teaser-status{ display:flex; gap:10px; align-items:center; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
+
+  /* ---------- metrics ---------- */
+  .metrics{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:34px 0 8px; }
+  .metric{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; box-shadow:var(--shadow); }
+  .metric .num{ font-family:var(--mono); font-size:38px; font-weight:700; letter-spacing:-.03em; color:var(--text); font-variant-numeric:tabular-nums; line-height:1; }
+  .metric .num.good{ color:var(--ok); }
+  .metric .bar{ height:4px; border-radius:3px; background:var(--line); margin:14px 0 10px; overflow:hidden; }
+  .metric .bar i{ display:block; height:100%; background:var(--accent); border-radius:3px; width:0; transition:width 1s cubic-bezier(.2,.7,.2,1); }
+  .metric .lab{ font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); }
+  .metric .sub{ font-size:13px; color:var(--faint); margin-top:3px; }
+
+  /* ---------- section ---------- */
+  section{ padding:56px 0; border-bottom:1px solid var(--line); }
+  .sec-head{ margin-bottom:28px; }
+  .sec-head h2{ font-size:23px; margin-top:8px; }
+  .sec-head p{ color:var(--muted); margin:8px 0 0; max-width:64ch; }
+
+  /* ---------- interactive console ---------- */
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+  .chip-btn{ font-family:var(--mono); font-size:12.5px; color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:7px 13px; cursor:pointer; transition:color .15s, border-color .15s, background .15s; }
+  .chip-btn:hover{ color:var(--accent); border-color:color-mix(in srgb,var(--accent) 45%, var(--line)); }
+  .chip-btn.active{ color:var(--accent); border-color:var(--accent); background:color-mix(in srgb,var(--accent) 10%, transparent); }
+  .run-row{ display:flex; gap:10px; margin-top:4px; }
+  .run-input{ flex:1; min-width:0; font-family:var(--mono); font-size:14px; color:var(--text); background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:12px 14px; }
+  .run-input::placeholder{ color:var(--faint); }
+  .run-input:focus{ outline:none; border-color:var(--accent); }
+  .run-btn{ font-family:var(--mono); font-weight:700; font-size:13px; letter-spacing:.04em; color:#fff; background:var(--accent); border:0; border-radius:9px; padding:0 22px; cursor:pointer; white-space:nowrap; }
+  .run-btn:hover{ filter:brightness(1.08); }
+  .run-btn:active{ transform:translateY(1px); }
+  .run-btn:disabled{ opacity:.55; cursor:default; }
+  .pipe{ display:flex; gap:8px; margin:20px 0 0; flex-wrap:wrap; min-height:34px; }
+  .pipe[hidden]{ display:none; }
+  .pstep{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; letter-spacing:.03em; color:var(--faint); border:1px solid var(--line); border-radius:8px; padding:7px 11px; background:var(--panel); transition:color .25s, border-color .25s; }
+  .pstep .pd{ width:7px; height:7px; border-radius:50%; background:var(--line); transition:background .25s, box-shadow .25s; flex:none; }
+  .pstep.run .pd{ background:var(--warn); box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%, transparent); }
+  .pstep.done{ color:var(--text); border-color:color-mix(in srgb,var(--accent) 40%, var(--line)); }
+  .pstep.done .pd{ background:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%, transparent); }
+  .pstep.warnstep{ color:var(--warn); border-color:color-mix(in srgb,var(--warn) 45%, var(--line)); }
+  .pstep.warnstep .pd{ background:var(--warn); box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%, transparent); }
+  #outcome{ margin-top:20px; }
+  #outcome[hidden]{ display:none; }
+  #outcome .card{ opacity:0; transform:translateY(8px); }
+  #outcome .card.show{ opacity:1; transform:none; transition:opacity .4s ease, transform .4s ease; }
+
+  /* ---------- demo cards ---------- */
+  .cards{ display:flex; flex-direction:column; gap:18px; }
+  .card{
+    position:relative; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:22px 24px 22px 26px; box-shadow:var(--shadow);
+    border-left:3px solid var(--stripe,var(--accent));
+  }
+  .js .card.reveal{ opacity:0; transform:translateY(14px); }
+  .card.in{ opacity:1; transform:none; transition:opacity .5s ease, transform .5s ease; }
+  .card-top{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .cap{ font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); font-weight:600; }
+  .pill{
+    font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; padding:4px 10px; border-radius:999px;
+    color:var(--pc); background:color-mix(in srgb, var(--pc) 13%, transparent);
+    border:1px solid color-mix(in srgb, var(--pc) 35%, transparent); white-space:nowrap;
+  }
+  .ask{ font-size:17px; font-weight:600; margin:0 0 4px; letter-spacing:-.01em; }
+  .ask::before{ content:"❯ "; color:var(--accent); font-family:var(--mono); }
+  .note{ color:var(--muted); font-size:14px; margin:2px 0 0; }
+
+  pre.sql{
+    font-family:var(--mono); font-size:12.8px; line-height:1.55; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:14px 16px; margin:14px 0 0; overflow-x:auto; white-space:pre;
+  }
+  pre.sql .kw{ color:var(--accent); font-weight:600; }
+  pre.sql.danger{ color:var(--bad); }
+
+  .readout{ display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:14px; font-family:var(--mono); font-size:12.5px; }
+  .chip{ padding:4px 9px; border-radius:7px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .chip b{ color:var(--text); font-weight:600; }
+  .bt{ margin-top:14px; font-size:14px; color:var(--muted); }
+  .bt .lab{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); display:block; margin-bottom:2px; }
+  .bt em{ color:var(--text); font-style:normal; }
+
+  .warns{ margin:14px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .warns li{ font-size:13.5px; color:var(--text); padding-left:22px; position:relative; }
+  .warns li::before{ content:"▲"; position:absolute; left:0; color:var(--warn); font-size:11px; top:3px; }
+  .warns li.stop::before{ content:"✕"; color:var(--bad); }
+
+  .interp{ display:grid; gap:10px; margin-top:14px; }
+  .interp div{ border:1px solid var(--line); border-radius:9px; padding:12px 14px; background:var(--panel-2); }
+  .interp b{ font-family:var(--mono); font-size:13px; color:var(--text); }
+  .interp p{ margin:4px 0 0; font-size:13.5px; color:var(--muted); }
+
+  /* confidence meter */
+  .meter{ margin-top:16px; }
+  .meter-top{ display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); }
+  .meter-top .lab{ font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
+  .meter-top .val{ font-size:20px; font-weight:700; color:var(--mc,var(--accent)); font-variant-numeric:tabular-nums; }
+  .track{ height:7px; border-radius:4px; background:var(--line); margin-top:8px; overflow:hidden; }
+  .track i{ display:block; height:100%; border-radius:4px; background:var(--mc,var(--accent)); }
+  .track.anim i{ width:0; transition:width .9s cubic-bezier(.2,.7,.2,1); }
+  .signals{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .signals span b{ color:var(--text); font-weight:600; }
+
+  /* ---------- guardrail tester ---------- */
+  .gtest{ margin-top:24px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; box-shadow:var(--shadow); }
+  .gtest h3{ font-size:15px; margin:0 0 4px; }
+  .gtest p{ margin:0 0 14px; color:var(--muted); font-size:14px; }
+  .gpre{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .gtest textarea{ width:100%; font-family:var(--mono); font-size:13px; line-height:1.5; color:var(--text); background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:12px 14px; resize:vertical; min-height:54px; }
+  .gtest textarea:focus{ outline:none; border-color:var(--accent); }
+  .gverdict{ margin-top:14px; font-family:var(--mono); font-size:13px; border-radius:9px; padding:13px 15px; }
+  .gverdict[hidden]{ display:none; }
+  .gverdict.pass{ color:var(--ok); background:color-mix(in srgb,var(--ok) 10%, transparent); border:1px solid color-mix(in srgb,var(--ok) 35%, transparent); }
+  .gverdict.block{ color:var(--bad); background:color-mix(in srgb,var(--bad) 10%, transparent); border:1px solid color-mix(in srgb,var(--bad) 35%, transparent); }
+  .gverdict .vh{ font-weight:700; letter-spacing:.06em; }
+  .gverdict ul{ margin:9px 0 0; padding-left:20px; color:var(--text); }
+  .gverdict li{ margin:3px 0; }
+
+  /* ---------- eval ---------- */
+  .eval-grid{ display:grid; grid-template-columns:1.1fr 1fr; gap:18px; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; box-shadow:var(--shadow); }
+  .panel h3{ font-size:14px; letter-spacing:-.01em; margin-bottom:16px; color:var(--text); }
+  .catrow{ display:grid; grid-template-columns:96px 1fr 44px; align-items:center; gap:12px; margin-bottom:11px; font-family:var(--mono); font-size:12.5px; }
+  .catrow .cn{ color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-size:11px; }
+  .catrow .cbar{ height:6px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .catrow .cbar i{ display:block; height:100%; background:var(--accent); border-radius:4px; }
+  .catrow .cv{ text-align:right; color:var(--text); font-variant-numeric:tabular-nums; }
+  .bigstat{ text-align:center; padding:10px 0 4px; }
+  .bigstat .n{ font-family:var(--mono); font-size:44px; font-weight:700; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+  .bigstat .n.ok{ color:var(--ok); } .bigstat .n.warn{ color:var(--warn); }
+  .bigstat .c{ font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-top:4px; }
+  .split{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px; border-top:1px solid var(--line); padding-top:16px; }
+
+  /* ---------- safety layers ---------- */
+  .layers{ display:flex; flex-direction:column; gap:0; }
+  .layer{ display:grid; grid-template-columns:34px 1fr; gap:16px; padding:18px 0; border-bottom:1px solid var(--line); align-items:start; }
+  .layer:last-child{ border-bottom:0; }
+  .layer .ix{ font-family:var(--mono); font-weight:700; color:var(--accent); font-size:15px; padding-top:2px; }
+  .layer h4{ font-family:var(--mono); font-size:14.5px; margin:0 0 4px; color:var(--text); }
+  .layer p{ margin:0; color:var(--muted); font-size:14px; }
+  .layer code{ color:var(--text); background:var(--panel-2); padding:1px 5px; border-radius:4px; border:1px solid var(--line); font-size:12.5px; }
+  .allthree{ margin-top:20px; font-family:var(--mono); font-size:13px; color:var(--muted); padding:14px 16px; border:1px dashed var(--line); border-radius:9px; background:var(--panel-2); }
+  .allthree b{ color:var(--accent); }
+
+  /* ---------- run ---------- */
+  .runcols{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .term{ background:var(--panel-2); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .term .console-body{ font-size:12.6px; }
+  .term .c{ color:var(--muted); } .term .p{ color:var(--accent); }
+  .links{ display:flex; flex-direction:column; gap:12px; }
+  .linkcard{ display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:16px 18px; box-shadow:var(--shadow); }
+  .linkcard .ldot{ width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 20%, transparent); flex:none; }
+  .linkcard .t{ font-family:var(--mono); font-weight:700; font-size:14px; }
+  .linkcard .u{ font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+
+  footer{ padding:38px 0 60px; color:var(--faint); font-family:var(--mono); font-size:12.5px; }
+  footer .stack{ color:var(--muted); }
+
+  @media (max-width:720px){
+    .metrics,.eval-grid,.runcols{ grid-template-columns:1fr; }
+    .console-body{ font-size:12px; }
+    header{ padding:52px 0 32px; }
+    .run-row{ flex-direction:column; }
+    .run-btn{ padding:12px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .caret{ animation:none; }
+    .js .card.reveal{ opacity:1; transform:none; }
+    .card.in{ transition:none; }
+    .metric .bar i, .track.anim i{ transition:none; }
+    #outcome .card{ opacity:1; transform:none; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="kicker">
+      <span class="dot"></span>
+      <span class="eyebrow">Text-to-SQL · Guardrails · Hallucination Detection</span>
+    </div>
+    <h1 class="title">Ask in English.<br><span class="thin">Never break the database.</span></h1>
+    <p class="lede">A natural-language interface that writes SQL against a real database, refuses to guess when a question is ambiguous, blocks anything destructive, and scores how much you should trust each answer. <b style="color:var(--text);font-weight:600">Try it live below.</b></p>
+
+    <div class="console" aria-label="example query">
+      <div class="console-bar"><i class="tl"></i><i class="tl"></i><i class="tl"></i><span>POST /v1/query</span></div>
+      <div class="console-body">
+        <div class="q-line">❯ <b>what is the gross revenue by category?</b></div>
+<div class="sql-teaser"><span class="kw">SELECT</span> c.name, <span class="kw">SUM</span>(oi.quantity * oi.unit_price) <span class="kw">AS</span> revenue
+<span class="kw">FROM</span> order_items oi <span class="kw">JOIN</span> products … <span class="kw">GROUP BY</span> c.name<span class="caret"></span></div>
+        <div class="teaser-status">
+          <span class="pill" style="--pc:var(--ok)">OK</span>
+          <span class="mono" style="font-size:12.5px;color:var(--muted)">Electronics&nbsp;$22,891.90 · verified · confidence 84%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="num good">100%</div>
+        <div class="bar"><i data-w="100"></i></div>
+        <div class="lab">Destructive ops blocked</div>
+        <div class="sub">12 / 12 · 0 ever executed</div>
+      </div>
+      <div class="metric">
+        <div class="num">80%</div>
+        <div class="bar"><i data-w="80"></i></div>
+        <div class="lab">Hallucinations caught</div>
+        <div class="sub">0% false-positive rate</div>
+      </div>
+      <div class="metric">
+        <div class="num">100%</div>
+        <div class="bar"><i data-w="100"></i></div>
+        <div class="lab">Execution accuracy</div>
+        <div class="sub">40 / 40 answerable · offline baseline</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== interactive console ===== -->
+  <section id="try">
+    <div class="sec-head">
+      <span class="eyebrow">Try it live · runs in your browser</span>
+      <h2>Pick a question, watch the pipeline run</h2>
+      <p>Each button replays the real captured response through the four stages: generate → guardrail → execute (read-only) → validate. Or type your own — the offline examples are cached; anything destructive is best tried in the guardrail tester further down.</p>
+    </div>
+
+    <div class="chips" id="chips"></div>
+    <div class="run-row">
+      <input class="run-input" id="qinput" type="text" autocomplete="off"
+             placeholder="e.g. what is the gross revenue by category?"
+             aria-label="Ask a question">
+      <button class="run-btn" id="runbtn">Run ▶</button>
+    </div>
+    <div class="pipe" id="pipe" hidden></div>
+    <div id="outcome" hidden></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">The demo · six behaviors</span>
+      <h2>Every capability, side by side</h2>
+      <p>The reference gallery — real output captured from the running system (offline stub provider, no API key). Generate → guardrail → execute in a read-only sandbox → validate → score.</p>
+    </div>
+
+    <div class="cards">
+
+      <!-- 1 translation -->
+      <article class="card reveal" style="--stripe:var(--ok)">
+        <div class="card-top"><span class="cap">Translation · 3-table join + aggregation</span><span class="pill" style="--pc:var(--ok)">OK</span></div>
+        <p class="ask">What is the gross revenue by category?</p>
+<pre class="sql"><span class="kw">SELECT</span> c.name <span class="kw">AS</span> category, <span class="kw">SUM</span>(oi.quantity * oi.unit_price) <span class="kw">AS</span> revenue
+<span class="kw">FROM</span> order_items oi
+<span class="kw">JOIN</span> products p   <span class="kw">ON</span> oi.product_id = p.product_id
+<span class="kw">JOIN</span> categories c <span class="kw">ON</span> p.category_id = c.category_id
+<span class="kw">GROUP BY</span> c.name
+<span class="kw">ORDER BY</span> revenue <span class="kw">DESC</span>;</pre>
+        <div class="readout">
+          <span class="chip"><b>Electronics</b> 22,891.90</span>
+          <span class="chip"><b>Clothing</b> 2,187.68</span>
+          <span class="chip"><b>Home</b> 1,302.30</span>
+          <span class="chip">+2 more</span>
+        </div>
+        <div class="bt"><span class="lab">Back-translation check</span><em>“…returns the total revenue from order_items, products, categories grouped by name.”</em></div>
+        <div class="meter">
+          <div class="meter-top"><span class="lab">Confidence</span><span class="val">84%</span></div>
+          <div class="track"><i style="width:84%"></i></div>
+          <div class="signals"><span>align <b>0.46</b></span><span>sanity <b>1.00</b></span><span>schema <b>1.00</b></span><span>syntax <b>✓</b></span></div>
+        </div>
+      </article>
+
+      <!-- 2 ambiguity -->
+      <article class="card reveal" style="--stripe:var(--warn)">
+        <div class="card-top"><span class="cap">Ambiguity · refuse to guess</span><span class="pill" style="--pc:var(--warn)">Clarify</span></div>
+        <p class="ask">What is our revenue?</p>
+        <p class="note">“Revenue” is ambiguous — every order, or only completed ones? The system returns a structured clarification instead of picking one silently.</p>
+        <div class="interp">
+          <div><b>Gross revenue</b> — all orders<p>Sum of quantity × unit_price across every order, regardless of status.</p></div>
+          <div><b>Net revenue</b> — completed only<p>Excludes cancelled, refunded, and pending orders.</p></div>
+        </div>
+      </article>
+
+      <!-- 3 guardrail -->
+      <article class="card reveal" style="--stripe:var(--bad)">
+        <div class="card-top"><span class="cap">Guardrail · destructive edit blocked</span><span class="pill" style="--pc:var(--bad)">Blocked</span></div>
+        <p class="ask">clean up old records <span class="mono" style="font-size:12px;color:var(--faint)">— power user edits the SQL</span></p>
+<pre class="sql danger">DROP TABLE customers;</pre>
+        <ul class="warns">
+          <li class="stop">Only SELECT / WITH queries are allowed (got <code>DROP</code>)</li>
+          <li class="stop">Forbidden keyword(s): <code>DROP</code></li>
+        </ul>
+        <p class="note" style="margin-top:14px">Caught at parse level, before the database. A read-only DB role and auto-rollback sandbox sit behind this as layers two and three.</p>
+      </article>
+
+      <!-- 4 hallucination -->
+      <article class="card reveal" style="--stripe:var(--warn)">
+        <div class="card-top"><span class="cap">Hallucination · wrong subject caught</span><span class="pill" style="--pc:var(--warn)">Flagged</span></div>
+        <p class="ask">How many customers do we have?</p>
+<pre class="sql"><span class="kw">SELECT</span> <span class="kw">COUNT</span>(*) <span class="kw">FROM</span> orders;   <span style="color:var(--faint)">-- runs, returns 30</span></pre>
+        <div class="bt"><span class="lab">Back-translation check</span><em>“…returns the number of records from orders.”</em></div>
+        <ul class="warns">
+          <li>Question is about <code>['customers']</code> but the SQL queries <code>['orders']</code></li>
+        </ul>
+        <div class="meter">
+          <div class="meter-top"><span class="lab">Confidence</span><span class="val" style="--mc:var(--warn)">65%</span></div>
+          <div class="track"><i style="width:65%;background:var(--warn)"></i></div>
+          <div class="signals"><span>align <b>0.42</b></span><span>sanity <b>0.00</b></span><span>schema <b>1.00</b></span><span>entity <b>✕ mismatch</b></span></div>
+        </div>
+      </article>
+
+      <!-- 5 multi-query -->
+      <article class="card reveal" style="--stripe:var(--ok)">
+        <div class="card-top"><span class="cap">Cross-validation · two independent strategies</span><span class="pill" style="--pc:var(--ok)">Verified</span></div>
+        <p class="ask">How many orders are completed?</p>
+<pre class="sql"><span class="kw">SELECT</span> <span class="kw">COUNT</span>(*) <span class="kw">AS</span> order_count <span class="kw">FROM</span> orders <span class="kw">WHERE</span> status = <span style="color:var(--ok)">'completed'</span>;</pre>
+        <div class="readout"><span class="chip"><b>order_count</b> 16</span><span class="chip">strategies agree ✓</span></div>
+        <div class="meter">
+          <div class="meter-top"><span class="lab">Confidence</span><span class="val">100%</span></div>
+          <div class="track"><i style="width:100%"></i></div>
+          <div class="signals"><span>align <b>1.00</b></span><span>sanity <b>1.00</b></span><span>schema <b>1.00</b></span><span>multi-query <b>✓</b></span></div>
+        </div>
+      </article>
+
+      <!-- 6 refusal -->
+      <article class="card reveal" style="--stripe:var(--faint)">
+        <div class="card-top"><span class="cap">Out of schema · refuse, don’t invent</span><span class="pill" style="--pc:var(--muted)">Refused</span></div>
+        <p class="ask">What was the weather on each order date?</p>
+        <p class="note">The schema has no weather data, so this question cannot be answered — the system says so instead of hallucinating a plausible-looking query.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Evaluation · 52-case golden set</span>
+      <h2>Numbers you can reproduce</h2>
+      <p>A regression suite of 52 questions — lookups, joins, aggregations, date filters, ambiguous phrasing, and questions the database <em>can’t</em> answer. Run <code class="mono">python -m evals.run_evals</code>.</p>
+    </div>
+    <div class="eval-grid">
+      <div class="panel">
+        <h3>Execution accuracy by category</h3>
+        <div class="catrow"><span class="cn">aggregate</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">13/13</span></div>
+        <div class="catrow"><span class="cn">join</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">10/10</span></div>
+        <div class="catrow"><span class="cn">lookup</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">11/11</span></div>
+        <div class="catrow"><span class="cn">date</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">6/6</span></div>
+        <div class="catrow"><span class="cn">ambiguous</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">4/4</span></div>
+        <div class="catrow"><span class="cn">unanswer.</span><span class="cbar"><i style="width:100%"></i></span><span class="cv">8/8</span></div>
+      </div>
+      <div class="panel">
+        <h3>Safety machinery</h3>
+        <div class="bigstat"><div class="n ok">12/12</div><div class="c">dangerous queries blocked · 0 executed</div></div>
+        <div class="split">
+          <div class="bigstat" style="padding-top:0"><div class="n warn">80%</div><div class="c">hallucination detection</div></div>
+          <div class="bigstat" style="padding-top:0"><div class="n ok">0%</div><div class="c">false positives</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Why a compliance team signs off</span>
+      <h2>Three independent layers of defense</h2>
+      <p>A write reaches the database only if <em>all three</em> fail at once — belt, suspenders, and a second belt.</p>
+    </div>
+    <div class="layers">
+      <div class="layer"><div class="ix">1</div><div><h4>Guardrail middleware</h4><p>A token-level parse (not regex) blocks DDL/DML, stacked statements, <code>SELECT … INTO</code>, and deep subqueries, and injects <code>LIMIT</code> when missing. A literal like <code>WHERE name = 'DROP TABLE'</code> does not trip it.</p></div></div>
+      <div class="layer"><div class="ix">2</div><div><h4>Read-only sandbox</h4><p>Every query runs in a transaction that is always rolled back; on Postgres the session is <code>SET TRANSACTION READ ONLY</code> with a statement timeout.</p></div></div>
+      <div class="layer"><div class="ix">3</div><div><h4>SELECT-only database role</h4><p>The app connects as a user with no INSERT / UPDATE / DELETE privileges. Even a guardrail miss cannot write.</p></div></div>
+    </div>
+    <div class="allthree">Every blocked query is written to an append-only audit log. Result across the eval suite: <b>zero unsafe queries executed.</b></div>
+
+    <!-- ===== interactive guardrail tester ===== -->
+    <div class="gtest">
+      <h3>Try to break it →</h3>
+      <p>Type any SQL and the same guardrail logic runs here in your browser: SELECT/WITH only, no destructive keywords, no stacked statements, auto-<code>LIMIT</code>. String literals don’t trip it — try <code>WHERE name = 'DROP TABLE'</code>.</p>
+      <div class="gpre" id="gpre"></div>
+      <textarea id="gsql" spellcheck="false" rows="2">DROP TABLE customers;</textarea>
+      <button class="run-btn" id="gbtn" style="margin-top:12px">Check query ▶</button>
+      <div class="gverdict" id="gverdict" hidden></div>
+    </div>
+  </section>
+
+  <section style="border-bottom:0">
+    <div class="sec-head">
+      <span class="eyebrow">Run it yourself</span>
+      <h2>Offline in four commands — no API key</h2>
+      <p>Generation falls back to a deterministic stub when no key is set, so the whole pipeline runs. Point <code>LLM_PROVIDER=anthropic</code> at a real model to swap it in.</p>
+    </div>
+    <div class="runcols">
+      <div class="term">
+        <div class="console-bar"><i class="tl"></i><i class="tl"></i><i class="tl"></i><span>bash</span></div>
+        <div class="console-body">
+<span class="c"># seed the embedded DuckDB demo db</span>
+<span class="p">$</span> python -m app.db
+<span class="c"># scripted walkthrough of all six</span>
+<span class="p">$</span> python demo.py
+<span class="c"># full evaluation report</span>
+<span class="p">$</span> python -m evals.run_evals
+<span class="c"># API + browser UI</span>
+<span class="p">$</span> uvicorn app.main:app
+<span class="p">$</span> streamlit run frontend/streamlit_app.py</div>
+      </div>
+      <div class="links">
+        <div class="linkcard"><span class="ldot"></span><div><div class="t">FastAPI service</div><a class="u" href="http://127.0.0.1:8000/docs">127.0.0.1:8000/docs</a></div></div>
+        <div class="linkcard"><span class="ldot"></span><div><div class="t">Streamlit UI</div><a class="u" href="http://127.0.0.1:8501">127.0.0.1:8501</a></div></div>
+        <div class="linkcard" style="box-shadow:none;background:var(--panel-2)"><span class="ldot" style="background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)"></span><div><div class="t">Local links</div><div class="u" style="color:var(--faint)">resolve only while your servers are running</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="stack">Python 3.11 · FastAPI · SQLAlchemy · sqlparse · DuckDB / PostgreSQL · Anthropic Claude / OpenAI (pluggable) · Streamlit · Docker Compose</div>
+    <div style="margin-top:8px">Project 8 — Text-to-SQL Interface with Guardrails and Hallucination Detection · 32 tests green · offline deterministic baseline</div>
+  </footer>
+
+</div>
+
+<script>
+  document.documentElement.classList.add('js');
+  const REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const kw = s => esc(s).replace(/\b(SELECT|FROM|JOIN|ON|WHERE|GROUP BY|ORDER BY|DESC|ASC|AS|SUM|COUNT|LIMIT|AND|OR|IS|NOT|NULL|FALSE|TRUE)\b/g,
+                       '<span class="kw">$1</span>');
+
+  /* ---- scroll reveal for the reference cards ---- */
+  const cards = document.querySelectorAll('.card.reveal');
+  if (!REDUCE && 'IntersectionObserver' in window){
+    const io = new IntersectionObserver((es)=>{ es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} }); },
+      {threshold:.12, rootMargin:'0px 0px -8% 0px'});
+    cards.forEach(el=>io.observe(el));
+  } else { cards.forEach(el=>el.classList.add('in')); }
+
+  /* ---- animate hero metric bars on load ---- */
+  requestAnimationFrame(()=>document.querySelectorAll('.metric .bar i').forEach(i=>{ i.style.width = i.dataset.w + '%'; }));
+
+  /* ===================== interactive query console ===================== */
+  // Real captured responses (offline stub provider).
+  const SC = {
+    revenue: { key:'revenue-cat', chip:'Gross revenue by category', tone:'ok', pill:'OK',
+      cap:'Translation · 3-table join', q:'What is the gross revenue by category?',
+      sql:"SELECT c.name AS category, SUM(oi.quantity * oi.unit_price) AS revenue\nFROM order_items oi\nJOIN products p ON oi.product_id = p.product_id\nJOIN categories c ON p.category_id = c.category_id\nGROUP BY c.name\nORDER BY revenue DESC\nLIMIT 1000;",
+      cols:['category','revenue'], rows:[['Electronics','22,891.90'],['Clothing','2,187.68'],['Home','1,302.30'],['Books','904.30'],['Toys','234.42']],
+      bt:'This query returns the total revenue from order_items, products, categories grouped by name.',
+      conf:84, sig:[['align','0.46'],['sanity','1.00'],['schema','1.00']],
+      warns:['no LIMIT present; capped at 1000 rows'] },
+    stock: { key:'stock', chip:'Which products are out of stock?', tone:'ok', pill:'OK',
+      cap:'Lookup · boolean filter', q:'Which products are out of stock?',
+      sql:"SELECT name FROM products WHERE in_stock = FALSE\nLIMIT 1000;",
+      cols:['name'], rows:[['Mechanical Keyboard'],['Winter Jacket']],
+      bt:'This query returns records from products that are out of stock.',
+      conf:100, sig:[['align','1.00'],['sanity','1.00'],['schema','1.00']],
+      warns:['no LIMIT present; capped at 1000 rows'] },
+    completed: { key:'completed', chip:'How many orders are completed?', tone:'ok', pill:'OK',
+      cap:'Aggregate · filtered count', q:'How many orders are completed?',
+      sql:"SELECT COUNT(*) AS order_count FROM orders WHERE status = 'completed'\nLIMIT 1000;",
+      cols:['order_count'], rows:[['16']],
+      bt:'This query returns the number of records from orders for completed orders.',
+      conf:100, sig:[['align','1.00'],['sanity','1.00'],['schema','1.00']],
+      warns:['no LIMIT present; capped at 1000 rows'] },
+    clarify: { key:'clarify', chip:'What is our revenue? (ambiguous)', tone:'warn', pill:'Clarify',
+      cap:'Ambiguity · refuse to guess', q:'What is our revenue?',
+      clar:{ question:'"Revenue" is ambiguous — should it include every order, or only completed ones?',
+        interps:[
+          ['Gross revenue (all orders)','Sum of quantity × unit_price across every order, regardless of status.'],
+          ['Net revenue (completed only)','Excludes cancelled, refunded, and pending orders.']] } },
+    weather: { key:'weather', chip:'Weather on each order date? (unanswerable)', tone:'muted', pill:'Refused',
+      cap:'Out of schema · refuse', q:'What was the weather on each order date?',
+      refuse:'The schema has no weather data, so this question cannot be answered.' }
+  };
+  const ORDER = ['revenue','stock','completed','clarify','weather'];
+
+  function route(q){
+    q = q.toLowerCase().trim();
+    if (!q) return null;
+    if (q.includes('weather')) return SC.weather;
+    if (q.includes('stock')) return SC.stock;
+    if (q.includes('complete')) return SC.completed;
+    if (q.includes('categor')) return SC.revenue;
+    if (q.includes('revenue') || q.includes('sales')) return SC.clarify;
+    if (/\b(drop|delete|insert|update|alter|truncate|create)\b/.test(q)) return 'guardrail';
+    return undefined; // unknown
+  }
+
+  const toneVar = t => t==='ok'?'var(--ok)':t==='warn'?'var(--warn)':t==='bad'?'var(--bad)':'var(--muted)';
+
+  function outcomeHTML(s){
+    const stripe = toneVar(s.tone);
+    let inner = `<div class="card-top"><span class="cap">${esc(s.cap)}</span>`+
+                `<span class="pill" style="--pc:${toneVar(s.tone)}">${esc(s.pill)}</span></div>`+
+                `<p class="ask">${esc(s.q)}</p>`;
+    if (s.clar){
+      inner += `<p class="note">${esc(s.clar.question)}</p><div class="interp">`;
+      s.clar.interps.forEach(([l,d])=> inner += `<div><b>${esc(l)}</b><p>${esc(d)}</p></div>`);
+      inner += `</div>`;
+    } else if (s.refuse){
+      inner += `<p class="note">${esc(s.refuse)}</p>`;
+    } else {
+      inner += `<pre class="sql">${kw(s.sql)}</pre>`;
+      if (s.rows){
+        inner += `<div class="readout">`;
+        s.rows.slice(0,5).forEach(r=>{
+          inner += `<span class="chip"><b>${esc(r[0])}</b>${r[1]!==undefined?' '+esc(r[1]):''}</span>`;
+        });
+        if (s.rows.length>5) inner += `<span class="chip">+${s.rows.length-5} more</span>`;
+        inner += `</div>`;
+      }
+      if (s.bt) inner += `<div class="bt"><span class="lab">Back-translation check</span><em>“${esc(s.bt)}”</em></div>`;
+      if (s.warns) s.warns.forEach(w=> inner += `<ul class="warns"><li>${esc(w)}</li></ul>`);
+      if (s.conf!=null){
+        const mc = s.conf>=75?'var(--accent)':s.conf>=50?'var(--warn)':'var(--bad)';
+        let sig = s.sig.map(([k,v])=>`<span>${k} <b>${v}</b></span>`).join('');
+        inner += `<div class="meter"><div class="meter-top"><span class="lab">Confidence</span>`+
+                 `<span class="val" style="--mc:${mc}">${s.conf}%</span></div>`+
+                 `<div class="track anim" style="--mc:${mc}"><i data-w="${s.conf}"></i></div>`+
+                 `<div class="signals">${sig}</div></div>`;
+      }
+    }
+    return `<article class="card" style="--stripe:${stripe}">${inner}</article>`;
+  }
+
+  const pipe = document.getElementById('pipe');
+  const outcome = document.getElementById('outcome');
+  const runbtn = document.getElementById('runbtn');
+  const qinput = document.getElementById('qinput');
+
+  function steps(s){
+    if (s.clar)   return [['Analyze question','done'],['Ambiguity detected','warn']];
+    if (s.refuse) return [['Analyze question','done'],['Not in schema','warn']];
+    return [['Generate SQL','done'],['Guardrails','done'],['Execute (read-only)','done'],['Validate','done']];
+  }
+
+  function showOutcome(s){
+    outcome.innerHTML = outcomeHTML(s);
+    outcome.hidden = false;
+    const card = outcome.querySelector('.card');
+    const fill = () => { const i = outcome.querySelector('.track.anim i'); if(i) i.style.width = i.dataset.w + '%'; };
+    if (REDUCE){ card.classList.add('show'); fill(); }
+    else requestAnimationFrame(()=>{ card.classList.add('show'); setTimeout(fill, 120); });
+  }
+
+  function run(q){
+    const r = route(q);
+    outcome.hidden = true; outcome.innerHTML = '';
+    if (r === undefined){
+      outcome.innerHTML = `<article class="card" style="--stripe:var(--muted)"><p class="note">`+
+        `This offline demo only has cached answers for the example questions above. Pick one — or scroll to the guardrail tester to try arbitrary SQL.</p></article>`;
+      outcome.hidden = false; pipe.hidden = true;
+      requestAnimationFrame(()=>outcome.querySelector('.card').classList.add('show'));
+      return;
+    }
+    if (r === 'guardrail'){
+      outcome.innerHTML = `<article class="card" style="--stripe:var(--bad)"><p class="note">`+
+        `That looks like a write/DDL statement. Guardrails block those — try it in the <b>guardrail tester</b> below to see the exact reasons.</p></article>`;
+      outcome.hidden = false; pipe.hidden = true;
+      requestAnimationFrame(()=>outcome.querySelector('.card').classList.add('show'));
+      return;
+    }
+    const st = steps(r);
+    pipe.hidden = false;
+    pipe.innerHTML = st.map(([l])=>`<span class="pstep"><span class="pd"></span>${esc(l)}</span>`).join('');
+    const els = [...pipe.children];
+    runbtn.disabled = true;
+    const stagger = REDUCE ? 0 : 360;
+    els.forEach((el,i)=>{
+      setTimeout(()=>{
+        el.classList.add('run');
+        setTimeout(()=>{
+          el.classList.remove('run');
+          el.classList.add(st[i][1]==='warn' ? 'warnstep' : 'done');
+          if (i === els.length-1){ showOutcome(r); runbtn.disabled = false; }
+        }, REDUCE ? 0 : 240);
+      }, i*stagger);
+    });
+    if (REDUCE){ showOutcome(r); runbtn.disabled = false; }
+  }
+
+  // build chips
+  const chips = document.getElementById('chips');
+  ORDER.forEach(k=>{
+    const b = document.createElement('button');
+    b.className = 'chip-btn'; b.textContent = SC[k].chip; b.dataset.k = k;
+    b.addEventListener('click', ()=>{
+      document.querySelectorAll('.chip-btn').forEach(c=>c.classList.remove('active'));
+      b.classList.add('active');
+      qinput.value = SC[k].q;
+      run(SC[k].q);
+    });
+    chips.appendChild(b);
+  });
+  runbtn.addEventListener('click', ()=>run(qinput.value));
+  qinput.addEventListener('keydown', e=>{ if(e.key==='Enter') run(qinput.value); });
+
+  /* ===================== interactive guardrail tester ===================== */
+  const FORBIDDEN = ['DROP','DELETE','INSERT','UPDATE','ALTER','CREATE','TRUNCATE','GRANT','REVOKE','REPLACE','MERGE','ATTACH','COPY','EXECUTE','CALL'];
+  function checkGuardrail(sql){
+    const raw = sql.trim().replace(/;\s*$/,'');
+    const violations = [];
+    if (!raw){ return {blocked:true, violations:['empty query']}; }
+    // strip string literals so a literal like 'DROP TABLE' can't trip the checks
+    const stripped = raw.replace(/'[^']*'/g,"''").replace(/"[^"]*"/g,'""');
+    const first = (stripped.toUpperCase().match(/[A-Z]+/) || ['?'])[0];
+    if (!['SELECT','WITH'].includes(first))
+      violations.push(`only SELECT / WITH queries are allowed (got '${first}')`);
+    const hits = FORBIDDEN.filter(k => new RegExp('\\b'+k+'\\b','i').test(stripped));
+    if (hits.length) violations.push('forbidden keyword(s): ' + hits.join(', '));
+    const stmts = stripped.split(';').filter(x=>x.trim());
+    if (stmts.length > 1) violations.push('multiple (stacked) statements are not allowed');
+    const notes = [];
+    if (!violations.length && !/\bLIMIT\b/i.test(stripped)) notes.push('no LIMIT — auto-capped at 1000 rows');
+    return { blocked: violations.length>0, violations, notes };
+  }
+  const gsql = document.getElementById('gsql');
+  const gverdict = document.getElementById('gverdict');
+  function checkAndShow(){
+    const res = checkGuardrail(gsql.value);
+    gverdict.hidden = false;
+    if (res.blocked){
+      gverdict.className = 'gverdict block';
+      gverdict.innerHTML = `<span class="vh">⛔ BLOCKED</span><ul>`+
+        res.violations.map(v=>`<li>${esc(v)}</li>`).join('') + `</ul>`;
+    } else {
+      gverdict.className = 'gverdict pass';
+      gverdict.innerHTML = `<span class="vh">✓ ALLOWED — runs in the read-only sandbox</span>`+
+        (res.notes.length ? `<ul>`+res.notes.map(n=>`<li>${esc(n)}</li>`).join('')+`</ul>` : '');
+    }
+  }
+  const GPRE = ['DROP TABLE customers;', 'SELECT * FROM orders', "SELECT * FROM t WHERE name = 'DROP TABLE'",
+                'SELECT 1; DELETE FROM products', 'UPDATE products SET price = 0'];
+  const gpre = document.getElementById('gpre');
+  GPRE.forEach(x=>{
+    const b = document.createElement('button');
+    b.className='chip-btn'; b.textContent = x.length>34 ? x.slice(0,33)+'…' : x;
+    b.title = x;
+    b.addEventListener('click', ()=>{ gsql.value = x; checkAndShow(); });
+    gpre.appendChild(b);
+  });
+  document.getElementById('gbtn').addEventListener('click', checkAndShow);
+</script>
