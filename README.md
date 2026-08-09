@@ -137,20 +137,34 @@ SELECT-only `app_readonly` role.
 
 ## API
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /v1/query` | question → SQL, results, confidence, warnings |
-| `POST /v1/feedback` | mark a past result correct/incorrect (the flywheel) |
-| `GET /v1/schema` | introspected schema (tables, keys, sample values) |
-| `GET /v1/history` | past queries for this session |
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /v1/auth/register` | — | create an account → access token |
+| `POST /v1/auth/login` | — | username + password → access token |
+| `GET /v1/auth/me` | token | the current user |
+| `POST /v1/query` | token | question → SQL, results, confidence, warnings |
+| `POST /v1/feedback` | token | mark a past result correct/incorrect (the flywheel) |
+| `GET /v1/schema` | token | introspected schema (tables, keys, sample values) |
+| `GET /v1/history` | token | past queries for this session |
+
+Auth is JWT Bearer tokens over a bcrypt-hashed users table (a separate SQLite db, so
+reseeding the demo data never touches accounts). A **demo account** is seeded on
+startup — username `demo`, password `demo12345` — or register your own. Everything
+under `/v1` except the auth endpoints requires a token.
 
 ```bash
-curl -s localhost:8000/v1/query -H 'content-type: application/json' \
+# log in (or POST the same body to /v1/auth/register), grab the token
+TOKEN=$(curl -s localhost:8000/v1/auth/login -H 'content-type: application/json' \
+  -d '{"username":"demo","password":"demo12345"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+
+curl -s localhost:8000/v1/query -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
   -d '{"question":"gross revenue by category"}' | python -m json.tool
 ```
 
 `POST /v1/query` also accepts `"sql_override"` (run a power-user's edited SQL through
-the guardrails), `"row_limit"`, and `"multi_query": true`.
+the guardrails), `"row_limit"`, and `"multi_query": true`. In the Streamlit UI you log
+in on a gate screen first; set `AUTH_SECRET_KEY` to keep sessions stable across restarts.
 
 ## The feedback flywheel
 

@@ -1,10 +1,13 @@
-"""Phase 4.2: Streamlit UI. Talks to the FastAPI service over HTTP."""
+"""Phase 4.2: Streamlit UI. Talks to the FastAPI service over HTTP.
+
+The whole app is gated behind a login screen; the query UI only renders once a
+JWT access token is held in session state.
+"""
 from __future__ import annotations
 
 import os
 
 import httpx
-import pandas as pd
 import streamlit as st
 
 API = os.environ.get("API_URL", "http://localhost:8000")
@@ -22,12 +25,77 @@ st.set_page_config(page_title="Text-to-SQL with Guardrails", layout="wide")
 st.title("🛡️ Text-to-SQL with Guardrails & Hallucination Detection")
 
 
+# ---- auth helpers ----
+def _headers() -> dict:
+    tok = st.session_state.get("token")
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
+
+def _logout(rerun: bool = False) -> None:
+    for k in ("token", "user"):
+        st.session_state.pop(k, None)
+    if rerun:
+        st.rerun()
+
+
+def _do_auth(path: str, username: str, password: str) -> None:
+    try:
+        r = httpx.post(f"{API}{path}", json={"username": username.strip(), "password": password}, timeout=30)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Can't reach the API at {API}: {e}")
+        return
+    if r.status_code == 200:
+        data = r.json()
+        st.session_state["token"] = data["access_token"]
+        st.session_state["user"] = data["username"]
+        st.rerun()
+    else:
+        try:
+            detail = r.json().get("detail", "authentication failed")
+        except Exception:  # noqa: BLE001
+            detail = "authentication failed"
+        st.error(detail)
+
+
+def render_login() -> None:
+    st.markdown("#### Sign in to run queries")
+    tab_in, tab_up = st.tabs(["Sign in", "Create account"])
+    with tab_in:
+        with st.form("login_form"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            if st.form_submit_button("Sign in", type="primary"):
+                _do_auth("/v1/auth/login", u, p)
+        st.caption("Demo login — username `demo`, password `demo12345`")
+    with tab_up:
+        with st.form("register_form"):
+            u2 = st.text_input("Choose a username", help="3–64 characters")
+            p2 = st.text_input("Choose a password", type="password", help="at least 8 characters")
+            if st.form_submit_button("Create account"):
+                _do_auth("/v1/auth/register", u2, p2)
+    st.stop()
+
+
+# ---- API client (carries the token; bounces to login on 401) ----
 def api_post(path: str, payload: dict) -> dict:
-    return httpx.post(f"{API}{path}", json=payload, timeout=60).json()
+    r = httpx.post(f"{API}{path}", json=payload, headers=_headers(), timeout=60)
+    if r.status_code == 401:
+        st.warning("Session expired — please sign in again.")
+        _logout(rerun=True)
+    return r.json()
 
 
 def api_get(path: str, params: dict | None = None) -> dict | list:
-    return httpx.get(f"{API}{path}", params=params or {}, timeout=30).json()
+    r = httpx.get(f"{API}{path}", params=params or {}, headers=_headers(), timeout=30)
+    if r.status_code == 401:
+        st.warning("Session expired — please sign in again.")
+        _logout(rerun=True)
+    return r.json()
+
+
+# ==== AUTH GATE: nothing below renders until logged in ====
+if "token" not in st.session_state:
+    render_login()
 
 
 def queue_question(q: str) -> None:
@@ -40,8 +108,13 @@ def queue_question(q: str) -> None:
         st.session_state["pending"] = q.strip()
 
 
-# ---- sidebar: options, schema, history ----
+# ---- sidebar: account, options, schema, history ----
 with st.sidebar:
+    st.markdown(f"**👤 {st.session_state.get('user', '')}**")
+    if st.button("Log out", use_container_width=True):
+        _logout(rerun=True)
+    st.divider()
+
     st.header("Options")
     multi_query = st.checkbox("Multi-query validation", value=False,
                               help="Generate a second, independently-phrased query and check the results agree.")
@@ -89,6 +162,8 @@ def confidence_panel(conf: dict) -> None:
 
 
 def render(resp: dict) -> None:
+    import pandas as pd  # local import: only needed once a result exists
+
     status = resp["status"]
     st.subheader(f"❯ {resp.get('question', '')}")
 

@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     audit_log_path: str = "audit.log"
     feedback_log_path: str = "feedback.jsonl"
 
+    # Auth
+    auth_db_url: str = "sqlite:///./data/auth.db"
+    auth_secret_key: str = ""  # empty -> random per-process secret (see app/auth.py)
+    auth_token_ttl_min: int = 720  # 12 hours
+    auth_seed_demo: bool = True
+    auth_demo_user: str = "demo"
+    auth_demo_password: str = "demo12345"
+
     @property
     def effective_provider(self) -> str:
         """Fall back to the offline stub when the chosen provider has no key."""

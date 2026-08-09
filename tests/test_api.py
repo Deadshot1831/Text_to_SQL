@@ -1,9 +1,26 @@
 """API smoke tests via FastAPI TestClient (stub provider)."""
 from fastapi.testclient import TestClient
 
+from app import auth
 from app.main import app
 
 client = TestClient(app)
+
+# All /v1 app endpoints require a token now — authenticate this client once.
+auth.init_auth_db()
+try:
+    auth.create_user("tester", "testerpw123")
+except ValueError:
+    pass  # already created by a previous run
+_token = client.post("/v1/auth/login", json={"username": "tester", "password": "testerpw123"}).json()["access_token"]
+client.headers.update({"Authorization": f"Bearer {_token}"})
+
+
+def test_protected_endpoints_require_auth():
+    anon = TestClient(app)  # no Authorization header
+    assert anon.post("/v1/query", json={"question": "x"}).status_code == 401
+    assert anon.get("/v1/schema").status_code == 401
+    assert anon.get("/v1/history").status_code == 401
 
 
 def test_query_endpoint_ok():
