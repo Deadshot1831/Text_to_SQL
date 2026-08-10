@@ -113,6 +113,10 @@ uvicorn app.main:app --reload                 # API on :8000  (docs at /docs)
 streamlit run frontend/streamlit_app.py       # UI  on :8501
 ```
 
+Then open **http://localhost:8000/login** — the sign-in / sign-up landing page (served
+by the API, so it authenticates same-origin) — or go straight to the Streamlit UI, which
+has its own login gate. Demo login: `demo` / `demo12345`.
+
 > **macOS note:** if Streamlit segfaults when it renders a result table, launch it with
 > `ARROW_DEFAULT_MEMORY_POOL=system streamlit run frontend/streamlit_app.py`. That's a
 > known crash in pyarrow's bundled allocator on macOS, unrelated to this app; the env var
