@@ -13,8 +13,10 @@ Everything under /v1 except the auth endpoints requires a Bearer token.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app import auth, store
@@ -45,6 +47,15 @@ def root() -> dict:
         "llm_provider": s.effective_provider,
         "model": s.llm_model,
     }
+
+
+_LOGIN_PAGE = Path(__file__).resolve().parent.parent / "docs" / "login.html"
+
+
+@app.get("/login", include_in_schema=False)
+def login_page() -> FileResponse:
+    """The sign-in / sign-up landing page (served same-origin so its fetch calls work)."""
+    return FileResponse(_LOGIN_PAGE)
 
 
 # ---------------- auth ----------------

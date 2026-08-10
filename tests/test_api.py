@@ -16,6 +16,14 @@ _token = client.post("/v1/auth/login", json={"username": "tester", "password": "
 client.headers.update({"Authorization": f"Bearer {_token}"})
 
 
+def test_login_page_served_publicly():
+    anon = TestClient(app)  # the landing page must be reachable without a token
+    r = anon.get("/login")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Sign in" in r.text and "Create account" in r.text
+
+
 def test_protected_endpoints_require_auth():
     anon = TestClient(app)  # no Authorization header
     assert anon.post("/v1/query", json={"question": "x"}).status_code == 401

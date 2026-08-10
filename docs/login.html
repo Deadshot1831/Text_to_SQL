@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Text-to-SQL with Guardrails</title>
+<style>
+  :root{
+    --ink:#EAF1EF; --panel:#FFFFFF; --panel-2:#F4F9F7; --line:#D3E0DD;
+    --text:#0F1F1D; --muted:#4E635E; --faint:#7C8D89;
+    --accent:#0F8177; --accent-soft:#D2ECE7;
+    --ok:#17925F; --warn:#A96E0F; --bad:#BE3841;
+    --shadow:0 1px 2px rgba(16,40,36,.06),0 10px 34px rgba(16,40,36,.08);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ink:#0A0F12; --panel:#111A1E; --panel-2:#0D1519; --line:#20313A;
+    --text:#DBE5E3; --muted:#8598A0; --faint:#5E7178;
+    --accent:#45C4B4; --accent-soft:#0F312E;
+    --ok:#4FBE8C; --warn:#DCA948; --bad:#E1626C;
+    --shadow:0 1px 0 rgba(255,255,255,.02),0 16px 46px rgba(0,0,0,.45);
+  }}
+  :root[data-theme="light"]{
+    --ink:#EAF1EF; --panel:#FFFFFF; --panel-2:#F4F9F7; --line:#D3E0DD;
+    --text:#0F1F1D; --muted:#4E635E; --faint:#7C8D89; --accent:#0F8177; --accent-soft:#D2ECE7;
+    --ok:#17925F; --warn:#A96E0F; --bad:#BE3841; --shadow:0 1px 2px rgba(16,40,36,.06),0 10px 34px rgba(16,40,36,.08);
+  }
+  :root[data-theme="dark"]{
+    --ink:#0A0F12; --panel:#111A1E; --panel-2:#0D1519; --line:#20313A;
+    --text:#DBE5E3; --muted:#8598A0; --faint:#5E7178; --accent:#45C4B4; --accent-soft:#0F312E;
+    --ok:#4FBE8C; --warn:#DCA948; --bad:#E1626C; --shadow:0 1px 0 rgba(255,255,255,.02),0 16px 46px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--ink); color:var(--text); font-family:var(--sans); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    display:grid; place-items:center; padding:32px 20px;
+    background-image:radial-gradient(120% 80% at 50% -10%, color-mix(in srgb,var(--accent) 10%, transparent), transparent 60%);
+    background-repeat:no-repeat;
+  }
+  .shell{ width:100%; max-width:420px; }
+  .brand{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .brand .mark{ width:34px; height:34px; border-radius:9px; display:grid; place-items:center;
+    background:color-mix(in srgb,var(--accent) 14%, transparent); border:1px solid color-mix(in srgb,var(--accent) 35%, var(--line)); font-size:18px; }
+  .brand .name{ font-family:var(--mono); font-weight:700; letter-spacing:-.01em; font-size:15px; }
+  .eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); }
+  h1{ font-family:var(--mono); font-weight:700; letter-spacing:-.02em; font-size:24px; margin:14px 0 6px; text-wrap:balance; }
+  .sub{ color:var(--muted); font-size:14.5px; margin:0 0 22px; }
+
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:var(--shadow); }
+  .tabs{ display:flex; gap:4px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:4px; margin-bottom:18px; }
+  .tab{ flex:1; font-family:var(--mono); font-size:12.5px; font-weight:600; letter-spacing:.02em; color:var(--muted);
+    background:transparent; border:0; border-radius:7px; padding:9px 8px; cursor:pointer; transition:background .15s,color .15s; }
+  .tab[aria-selected="true"]{ background:var(--panel); color:var(--text); box-shadow:var(--shadow); }
+  label{ display:block; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); margin:0 0 6px; }
+  .field{ margin-bottom:14px; }
+  input{ width:100%; font-family:var(--mono); font-size:14px; color:var(--text); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:9px; padding:11px 13px; }
+  input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%, transparent); }
+  .hint{ font-size:11.5px; color:var(--faint); margin-top:5px; font-family:var(--mono); }
+  .btn{ width:100%; font-family:var(--mono); font-weight:700; font-size:13.5px; letter-spacing:.03em; color:#fff;
+    background:var(--accent); border:0; border-radius:10px; padding:12px; cursor:pointer; transition:filter .15s,transform .05s; margin-top:4px; }
+  .btn:hover{ filter:brightness(1.08); } .btn:active{ transform:translateY(1px); }
+  .btn:disabled{ opacity:.6; cursor:default; }
+  .msg{ font-family:var(--mono); font-size:12.5px; border-radius:9px; padding:10px 12px; margin-top:14px; display:none; }
+  .msg.show{ display:block; }
+  .msg.err{ color:var(--bad); background:color-mix(in srgb,var(--bad) 10%, transparent); border:1px solid color-mix(in srgb,var(--bad) 35%, transparent); }
+  .msg.ok{ color:var(--ok); background:color-mix(in srgb,var(--ok) 10%, transparent); border:1px solid color-mix(in srgb,var(--ok) 35%, transparent); }
+  .foot{ text-align:center; margin-top:16px; font-size:12px; color:var(--faint); font-family:var(--mono); }
+  .foot a{ color:var(--accent); text-decoration:none; } .foot a:hover{ text-decoration:underline; }
+
+  /* signed-in state */
+  .welcome[hidden]{ display:none; }
+  .who{ font-family:var(--mono); font-size:14px; }
+  .who b{ color:var(--accent); }
+  .tokbox{ margin-top:14px; }
+  .tok{ font-family:var(--mono); font-size:11.5px; color:var(--muted); background:var(--panel-2); border:1px solid var(--line);
+    border-radius:8px; padding:10px 12px; word-break:break-all; max-height:64px; overflow:auto; }
+  .links{ display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  .lbtn{ flex:1; text-align:center; font-family:var(--mono); font-size:12.5px; font-weight:600; text-decoration:none;
+    color:var(--text); background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:11px 10px; transition:border-color .15s; }
+  .lbtn:hover{ border-color:var(--accent); }
+  .lbtn.primary{ color:#fff; background:var(--accent); border-color:var(--accent); }
+  .ghost{ background:transparent; border:0; color:var(--muted); font-family:var(--mono); font-size:12px; cursor:pointer; margin-top:14px; text-decoration:underline; }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;} }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <div class="brand"><span class="mark">🛡️</span><span class="name">Text-to-SQL</span></div>
+    <span class="eyebrow">Guardrails · Hallucination detection</span>
+    <h1>Ask your database in English.</h1>
+    <p class="sub">Sign in to run natural-language queries against a real database — safely. Destructive queries are blocked, ambiguous ones are clarified, and every answer ships with a confidence score.</p>
+
+    <div class="card">
+      <!-- auth form -->
+      <div id="authview">
+        <div class="tabs" role="tablist">
+          <button class="tab" id="tab-in" role="tab" aria-selected="true">Sign in</button>
+          <button class="tab" id="tab-up" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <form id="form" autocomplete="on">
+          <div class="field">
+            <label for="u">Username</label>
+            <input id="u" name="username" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="p">Password</label>
+            <input id="p" name="password" type="password" autocomplete="current-password" required>
+            <div class="hint" id="phint" hidden>At least 8 characters.</div>
+          </div>
+          <button class="btn" id="submit" type="submit">Sign in</button>
+        </form>
+        <div class="msg" id="msg"></div>
+        <div class="foot" id="demohint">Demo login — <b style="color:var(--text)">demo</b> / <b style="color:var(--text)">demo12345</b></div>
+      </div>
+
+      <!-- signed-in -->
+      <div class="welcome" id="welcome" hidden>
+        <p class="who">Signed in as <b id="whoName"></b> ✓</p>
+        <div class="tokbox">
+          <label>Your access token (for the API / Swagger “Authorize”)</label>
+          <div class="tok" id="tok"></div>
+          <button class="ghost" id="copy">Copy token</button>
+        </div>
+        <div class="links">
+          <a class="lbtn primary" id="appLink" href="#">Open the app ↗</a>
+          <a class="lbtn" id="docsLink" href="/docs">API docs ↗</a>
+        </div>
+        <button class="ghost" id="logout">Log out</button>
+      </div>
+    </div>
+
+    <div class="foot">Bearer-token auth over a bcrypt-hashed users table · tokens stay in this browser only</div>
+  </main>
+
+<script>
+  // Served same-origin by FastAPI, so relative /v1/... calls just work (no CORS).
+  const API = "";
+  const KEY = "t2sql_token", UKEY = "t2sql_user";
+  const $ = id => document.getElementById(id);
+  let mode = "login"; // "login" | "register"
+
+  function setMode(m){
+    mode = m;
+    const reg = m === "register";
+    $("tab-in").setAttribute("aria-selected", String(!reg));
+    $("tab-up").setAttribute("aria-selected", String(reg));
+    $("submit").textContent = reg ? "Create account" : "Sign in";
+    $("p").autocomplete = reg ? "new-password" : "current-password";
+    $("phint").hidden = !reg;
+    $("demohint").style.display = reg ? "none" : "";
+    hideMsg();
+  }
+  function showMsg(text, kind){ const m=$("msg"); m.textContent=text; m.className="msg show "+kind; }
+  function hideMsg(){ $("msg").className="msg"; }
+
+  function showWelcome(user, token){
+    $("authview").hidden = true;
+    $("welcome").hidden = false;
+    $("whoName").textContent = user;
+    $("tok").textContent = token;
+    // Streamlit UI runs on :8501 of the same host.
+    $("appLink").href = location.protocol + "//" + location.hostname + ":8501";
+  }
+  function showAuth(){ $("welcome").hidden = true; $("authview").hidden = false; }
+
+  async function submit(e){
+    e.preventDefault();
+    const username = $("u").value.trim(), password = $("p").value;
+    if(!username || !password){ showMsg("Enter a username and password.", "err"); return; }
+    if(mode === "register" && password.length < 8){ showMsg("Password must be at least 8 characters.", "err"); return; }
+    const path = mode === "register" ? "/v1/auth/register" : "/v1/auth/login";
+    $("submit").disabled = true; hideMsg();
+    try{
+      const r = await fetch(API + path, {
+        method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({username, password})
+      });
+      const data = await r.json().catch(()=> ({}));
+      if(r.ok){
+        localStorage.setItem(KEY, data.access_token);
+        localStorage.setItem(UKEY, data.username);
+        showWelcome(data.username, data.access_token);
+      }else{
+        let d = data.detail;
+        if(Array.isArray(d)) d = d.map(x=>x.msg).join("; "); // pydantic 422 shape
+        showMsg(d || "Authentication failed.", "err");
+      }
+    }catch(err){
+      showMsg("Can't reach the API. Is it running on this host?", "err");
+    }finally{
+      $("submit").disabled = false;
+    }
+  }
+
+  async function resumeSession(){
+    const token = localStorage.getItem(KEY);
+    if(!token) return;
+    try{
+      const r = await fetch(API + "/v1/auth/me", {headers:{authorization:"Bearer "+token}});
+      if(r.ok){ const d = await r.json(); showWelcome(d.username, token); }
+      else { localStorage.removeItem(KEY); localStorage.removeItem(UKEY); }
+    }catch(_){ /* API down — just show the form */ }
+  }
+
+  $("tab-in").addEventListener("click", ()=>setMode("login"));
+  $("tab-up").addEventListener("click", ()=>setMode("register"));
+  $("form").addEventListener("submit", submit);
+  $("logout").addEventListener("click", ()=>{
+    localStorage.removeItem(KEY); localStorage.removeItem(UKEY); showAuth(); setMode("login");
+  });
+  $("copy").addEventListener("click", async ()=>{
+    try{ await navigator.clipboard.writeText($("tok").textContent); $("copy").textContent="Copied ✓";
+      setTimeout(()=>$("copy").textContent="Copy token", 1500); }catch(_){}
+  });
+
+  setMode("login");
+  resumeSession();
+</script>
+</body>
+</html>
