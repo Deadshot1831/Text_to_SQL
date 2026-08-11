@@ -61,6 +61,10 @@
   h1.title{ font-size:clamp(30px,5.6vw,50px); line-height:1.03; margin:0 0 16px; }
   h1.title .thin{ color:var(--muted); font-weight:500; }
   .lede{ font-size:18px; color:var(--muted); max-width:60ch; margin:0; }
+  .signin{ margin-left:auto; font-family:var(--mono); font-size:12.5px; font-weight:600; letter-spacing:.02em;
+    color:var(--accent); text-decoration:none; border:1px solid color-mix(in srgb,var(--accent) 40%, var(--line));
+    border-radius:999px; padding:6px 14px; transition:background .15s,border-color .15s; white-space:nowrap; }
+  .signin:hover{ background:color-mix(in srgb,var(--accent) 12%, transparent); border-color:var(--accent); text-decoration:none; }
 
   .console{
     margin-top:30px; background:var(--panel-2); border:1px solid var(--line);
@@ -258,6 +262,7 @@
     <div class="kicker">
       <span class="dot"></span>
       <span class="eyebrow">Text-to-SQL · Guardrails · Hallucination Detection</span>
+      <a class="signin" href="http://127.0.0.1:8000/login">Sign in ↗</a>
     </div>
     <h1 class="title">Ask in English.<br><span class="thin">Never break the database.</span></h1>
     <p class="lede">A natural-language interface that writes SQL against a real database, refuses to guess when a question is ambiguous, blocks anything destructive, and scores how much you should trust each answer. <b style="color:var(--text);font-weight:600">Try it live below.</b></p>
@@ -483,6 +488,7 @@
 <span class="p">$</span> streamlit run frontend/streamlit_app.py</div>
       </div>
       <div class="links">
+        <div class="linkcard" style="border-color:color-mix(in srgb,var(--accent) 45%, var(--line))"><span class="ldot" style="background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)"></span><div><div class="t">Sign in / create account</div><a class="u" href="http://127.0.0.1:8000/login">127.0.0.1:8000/login</a></div></div>
         <div class="linkcard"><span class="ldot"></span><div><div class="t">FastAPI service</div><a class="u" href="http://127.0.0.1:8000/docs">127.0.0.1:8000/docs</a></div></div>
         <div class="linkcard"><span class="ldot"></span><div><div class="t">Streamlit UI</div><a class="u" href="http://127.0.0.1:8501">127.0.0.1:8501</a></div></div>
         <div class="linkcard" style="box-shadow:none;background:var(--panel-2)"><span class="ldot" style="background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)"></span><div><div class="t">Local links</div><div class="u" style="color:var(--faint)">resolve only while your servers are running</div></div></div>

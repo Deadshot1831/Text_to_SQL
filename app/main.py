@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,21 @@ app = FastAPI(
     version="1.0",
     lifespan=lifespan,
 )
+
+
+def configure_cors(app: FastAPI, origins: list[str]) -> None:
+    """Allow cross-origin calls from `origins`. Auth is Bearer tokens (no cookies),
+    so credentials stay off. With no origins configured the API is same-origin only."""
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+
+configure_cors(app, get_settings().cors_origins)
 
 
 @app.get("/")

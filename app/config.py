@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     auth_demo_user: str = "demo"
     auth_demo_password: str = "demo12345"
 
+    # CORS — comma-separated origins allowed to call the API cross-origin.
+    # Empty (default) = same-origin only (the /login page is served by the API).
+    # Set this to host the login page / a frontend on a different origin.
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
     @property
     def effective_provider(self) -> str:
         """Fall back to the offline stub when the chosen provider has no key."""

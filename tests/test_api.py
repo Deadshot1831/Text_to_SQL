@@ -16,6 +16,27 @@ _token = client.post("/v1/auth/login", json={"username": "tester", "password": "
 client.headers.update({"Authorization": f"Bearer {_token}"})
 
 
+def test_cors_configured_origin_is_allowed():
+    # Tests the wiring directly so it doesn't depend on env at import time.
+    from fastapi import FastAPI
+
+    from app.main import configure_cors
+
+    a = FastAPI()
+
+    @a.get("/ping")
+    def ping():
+        return {"ok": True}
+
+    configure_cors(a, ["http://example.com"])
+    c = TestClient(a)
+    r = c.get("/ping", headers={"Origin": "http://example.com"})
+    assert r.headers.get("access-control-allow-origin") == "http://example.com"
+    # an un-listed origin gets no allow header
+    r2 = c.get("/ping", headers={"Origin": "http://evil.com"})
+    assert r2.headers.get("access-control-allow-origin") in (None, "")
+
+
 def test_login_page_served_publicly():
     anon = TestClient(app)  # the landing page must be reachable without a token
     r = anon.get("/login")
