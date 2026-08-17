@@ -13,7 +13,8 @@ from app.db import dialect_name, get_engine
 from app.execute import run_query
 from app.generate import generate_sql
 from app.guardrails import apply_guardrails
-from app.models import GeneratedSQL, QueryRequest, QueryResponse, ValidationReport
+from app.injection import detect_injection
+from app.models import GeneratedSQL, GuardrailResult, QueryRequest, QueryResponse, ValidationReport
 from app.prompt import detect_ambiguity
 from app.schema import SchemaSnapshot, introspect
 from app.validation import (
@@ -45,6 +46,16 @@ def answer(req: QueryRequest) -> QueryResponse:
 
     if not q:
         return QueryResponse(question=q, status="error", error="empty question")
+
+    # Security — screen for prompt / SQL injection before the question reaches the LLM.
+    inj = detect_injection(q)
+    if inj:
+        log_event("prompt_injection_blocked", question=q, reasons=", ".join(inj))
+        return QueryResponse(
+            question=q, status="blocked",
+            guardrail=GuardrailResult(allowed=False, violations=inj, final_sql=""),
+            error="; ".join(inj),
+        )
 
     # Phase 1.4 — refuse to guess when the question is ambiguous.
     clar = detect_ambiguity(q)
