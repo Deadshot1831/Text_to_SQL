@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     guardrail_statement_timeout_ms: int = 5000
 
     # App
+    app_env: str = "development"  # "production" enforces a strong AUTH_SECRET_KEY
     audit_log_path: str = "audit.log"
     feedback_log_path: str = "feedback.jsonl"
 

@@ -126,6 +126,10 @@ class TokenOut(BaseModel):
 @app.post("/v1/auth/register", response_model=TokenOut)
 def register(body: RegisterIn) -> TokenOut:
     try:
+        auth.validate_password_strength(body.username, body.password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
         auth.create_user(body.username, body.password)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))

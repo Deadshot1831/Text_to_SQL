@@ -52,6 +52,43 @@ _engine = create_engine(
 _Session = sessionmaker(_engine, expire_on_commit=False)
 
 
+# ---- password policy ----
+# A tiny blocklist of the most-guessed passwords. In production you'd load a larger
+# list (e.g. the SecLists / HaveIBeenPwned top-N) — this covers the obvious ones.
+COMMON_PASSWORDS = frozenset({
+    "password", "password1", "12345678", "123456789", "1234567890",
+    "qwerty123", "qwertyuiop", "letmein1", "11111111", "iloveyou",
+    "admin123", "welcome1", "changeme", "passw0rd", "abcd1234",
+})
+
+
+def validate_password_strength(username: str, password: str) -> None:
+    """Raise ValueError with a human-readable reason if the password is too weak."""
+    if len(password) < 8:
+        raise ValueError("password must be at least 8 characters")
+    if password.lower() in COMMON_PASSWORDS:
+        raise ValueError("password is too common — pick something less guessable")
+    if username and username.lower() in password.lower():
+        raise ValueError("password must not contain the username")
+    if len(set(password)) < 4:
+        raise ValueError("password is not varied enough")
+
+
+def _secret_ok(app_env: str, secret: str) -> bool:
+    """A weak/empty AUTH_SECRET_KEY is only tolerated outside production."""
+    if app_env == "production":
+        return bool(secret) and len(secret) >= 32
+    return True
+
+
+def enforce_secret_policy() -> None:
+    s = get_settings()
+    if not _secret_ok(s.app_env, s.auth_secret_key):
+        raise RuntimeError(
+            "AUTH_SECRET_KEY must be set to at least 32 characters when APP_ENV=production"
+        )
+
+
 # ---- password hashing ----
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -112,6 +149,7 @@ def authenticate(username: str, password: str) -> str | None:
 
 def init_auth_db() -> None:
     """Create the table (idempotent) and seed the demo account. Safe to call repeatedly."""
+    enforce_secret_policy()  # fail fast in production if the JWT secret is weak
     if _url.startswith("sqlite:///"):
         path = _url.replace("sqlite:///", "", 1)
         if path and path != ":memory:":

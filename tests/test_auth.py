@@ -54,3 +54,22 @@ def test_password_is_hashed_not_stored_plaintext():
     assert h != "hunter2pw" and h.startswith("$2")
     assert auth.verify_password("hunter2pw", h)
     assert not auth.verify_password("wrong", h)
+
+
+def test_weak_passwords_rejected():
+    u = _user()
+    assert client.post("/v1/auth/register", json={"username": u, "password": "password"}).status_code == 400
+    assert client.post("/v1/auth/register", json={"username": u, "password": u + "extra"}).status_code == 400  # contains username
+    assert client.post("/v1/auth/register", json={"username": u, "password": "aaaaaaaa"}).status_code == 400  # not varied
+
+
+def test_strong_password_accepted():
+    u = _user()
+    assert client.post("/v1/auth/register", json={"username": u, "password": "Str0ng!phrase"}).status_code == 200
+
+
+def test_secret_policy_helper():
+    assert auth._secret_ok("development", "")           # dev: anything goes
+    assert not auth._secret_ok("production", "")        # prod: empty rejected
+    assert not auth._secret_ok("production", "tooshort")
+    assert auth._secret_ok("production", "x" * 32)      # prod: long secret ok
