@@ -16,6 +16,7 @@ from app.guardrails import apply_guardrails
 from app.injection import detect_injection
 from app.models import GeneratedSQL, GuardrailResult, QueryRequest, QueryResponse, ValidationReport
 from app.prompt import detect_ambiguity
+from app.redaction import redact_rows, redact_text
 from app.schema import SchemaSnapshot, introspect
 from app.validation import (
     ALIGNMENT_FLAG_THRESHOLD,
@@ -122,8 +123,16 @@ def answer(req: QueryRequest) -> QueryResponse:
     if mq_result and not mq_result.agree:
         warnings.append(f"multi-query check: {mq_result.note}")
 
+    # Data protection — mask PII in returned rows (and the logged question) last,
+    # so validation/confidence still ran on the real values.
+    if get_settings().pii_redaction_enabled:
+        execution.rows = redact_rows(execution.rows)
+        q_logged = redact_text(q)
+    else:
+        q_logged = q
+
     status = "ok" if execution.error is None else "error"
-    log_event("answered", question=q, sql=guard.final_sql, status=status, confidence=confidence.overall)
+    log_event("answered", question=q_logged, sql=guard.final_sql, status=status, confidence=confidence.overall)
 
     return QueryResponse(
         question=q, status=status, generated=gen, guardrail=guard, execution=execution,

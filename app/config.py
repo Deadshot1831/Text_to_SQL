@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     security_headers_enabled: bool = True
     hsts_enabled: bool = True  # Strict-Transport-Security, emitted on HTTPS requests only
 
+    # Data protection — mask emails / SSNs / card numbers in results and logs.
+    pii_redaction_enabled: bool = True
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
