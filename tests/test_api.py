@@ -45,6 +45,21 @@ def test_login_page_served_publicly():
     assert "Sign in" in r.text and "Create account" in r.text
 
 
+def test_login_lockout_after_repeated_failures():
+    import secrets
+
+    u = "lock_" + secrets.token_hex(3)
+    anon = TestClient(app)
+    anon.post("/v1/auth/register", json={"username": u, "password": "Val1dphrase"})
+    for _ in range(5):
+        assert anon.post("/v1/auth/login", json={"username": u, "password": "wrongxxxx"}).status_code == 401
+    r = anon.post("/v1/auth/login", json={"username": u, "password": "wrongxxxx"})
+    assert r.status_code == 429
+    assert any(k.lower() == "retry-after" for k in r.headers)
+    # while locked, even the correct password is refused
+    assert anon.post("/v1/auth/login", json={"username": u, "password": "Val1dphrase"}).status_code == 429
+
+
 def test_security_headers_present():
     r = TestClient(app).get("/")
     assert r.headers.get("x-content-type-options") == "nosniff"

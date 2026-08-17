@@ -26,6 +26,16 @@ from app import auth, store
 from app.config import get_settings
 from app.models import QueryRequest, QueryResponse
 from app.pipeline import answer, get_snapshot
+from app.ratelimit import FailureLimiter
+
+_login_limiter = FailureLimiter(
+    get_settings().auth_max_failures, get_settings().auth_failure_window_seconds
+)
+
+
+def _throttle_key(username: str, request: Request) -> str:
+    ip = request.client.host if request.client else "?"
+    return f"{(username or '').lower()}|{ip}"
 
 
 @asynccontextmanager
@@ -137,10 +147,20 @@ def register(body: RegisterIn) -> TokenOut:
 
 
 @app.post("/v1/auth/login", response_model=TokenOut)
-def login(body: LoginIn) -> TokenOut:
+def login(body: LoginIn, request: Request) -> TokenOut:
+    key = _throttle_key(body.username, request)
+    locked, retry = _login_limiter.is_locked(key)
+    if locked:
+        raise HTTPException(
+            status_code=429,
+            detail="too many failed attempts; try again later",
+            headers={"Retry-After": str(retry)},
+        )
     user = auth.authenticate(body.username, body.password)
     if not user:
+        _login_limiter.register_failure(key)
         raise HTTPException(status_code=401, detail="invalid username or password")
+    _login_limiter.reset(key)
     return TokenOut(access_token=auth.create_token(user), username=user)
 
 
