@@ -45,6 +45,21 @@ def test_login_page_served_publicly():
     assert "Sign in" in r.text and "Create account" in r.text
 
 
+def test_security_headers_present():
+    r = TestClient(app).get("/")
+    assert r.headers.get("x-content-type-options") == "nosniff"
+    assert r.headers.get("x-frame-options") == "DENY"
+    assert "referrer-policy" in r.headers
+    assert "permissions-policy" in r.headers
+
+
+def test_login_page_uses_nonce_csp():
+    r = TestClient(app).get("/login")
+    csp = r.headers.get("content-security-policy", "")
+    assert "script-src 'nonce-" in csp and "unsafe-inline" not in csp
+    assert 'nonce="' in r.text  # nonce injected into the inline tags
+
+
 def test_protected_endpoints_require_auth():
     anon = TestClient(app)  # no Authorization header
     assert anon.post("/v1/query", json={"question": "x"}).status_code == 401

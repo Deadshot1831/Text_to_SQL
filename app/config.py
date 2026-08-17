@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Set this to host the login page / a frontend on a different origin.
     cors_allow_origins: str = ""
 
+    # Security headers
+    security_headers_enabled: bool = True
+    hsts_enabled: bool = True  # Strict-Transport-Security, emitted on HTTPS requests only
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]

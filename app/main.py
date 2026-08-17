@@ -12,13 +12,15 @@ Everything under /v1 except the auth endpoints requires a Bearer token.
 """
 from __future__ import annotations
 
+import secrets as _secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import auth, store
 from app.config import get_settings
@@ -39,6 +41,21 @@ app = FastAPI(
 )
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add defensive response headers on every request."""
+
+    async def dispatch(self, request: Request, call_next):
+        resp = await call_next(request)
+        h = resp.headers
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Referrer-Policy", "no-referrer")
+        h.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        if get_settings().hsts_enabled and request.url.scheme == "https":
+            h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return resp
+
+
 def configure_cors(app: FastAPI, origins: list[str]) -> None:
     """Allow cross-origin calls from `origins`. Auth is Bearer tokens (no cookies),
     so credentials stay off. With no origins configured the API is same-origin only."""
@@ -52,6 +69,8 @@ def configure_cors(app: FastAPI, origins: list[str]) -> None:
 
 
 configure_cors(app, get_settings().cors_origins)
+if get_settings().security_headers_enabled:
+    app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.get("/")
@@ -69,9 +88,22 @@ _LOGIN_PAGE = Path(__file__).resolve().parent.parent / "docs" / "login.html"
 
 
 @app.get("/login", include_in_schema=False)
-def login_page() -> FileResponse:
-    """The sign-in / sign-up landing page (served same-origin so its fetch calls work)."""
-    return FileResponse(_LOGIN_PAGE)
+def login_page() -> HTMLResponse:
+    """The sign-in / sign-up landing page (served same-origin so its fetch calls work).
+
+    A per-request nonce is injected into the page's inline <style>/<script> so we can
+    ship a strict Content-Security-Policy with no 'unsafe-inline'.
+    """
+    html = _LOGIN_PAGE.read_text(encoding="utf-8")
+    nonce = _secrets.token_urlsafe(16)
+    html = html.replace("<style>", f'<style nonce="{nonce}">', 1)
+    html = html.replace("<script>", f'<script nonce="{nonce}">', 1)
+    csp = (
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; "
+        f"style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; "
+        "connect-src 'self'; img-src 'self' data:"
+    )
+    return HTMLResponse(html, headers={"Content-Security-Policy": csp})
 
 
 # ---------------- auth ----------------
