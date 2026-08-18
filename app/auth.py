@@ -41,6 +41,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(default=True)
+    # Comma-separated table allow-list for RBAC. NULL/empty = unrestricted (all tables).
+    allowed_tables: Mapped[str | None] = mapped_column(String(500), default=None, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         default=lambda: dt.datetime.now(dt.timezone.utc)
     )
@@ -168,14 +170,15 @@ def is_revoked(jti: str) -> bool:
 
 
 # ---- user store ----
-def create_user(username: str, password: str) -> str:
+def create_user(username: str, password: str, allowed_tables: list[str] | None = None) -> str:
     username = (username or "").strip()
     if not username or not password:
         raise ValueError("username and password are required")
+    at = ",".join(t.strip() for t in allowed_tables) if allowed_tables else None
     with _Session() as s:
         if s.scalar(select(User).where(User.username == username)):
             raise ValueError("username already taken")
-        s.add(User(username=username, password_hash=hash_password(password)))
+        s.add(User(username=username, password_hash=hash_password(password), allowed_tables=at))
         s.commit()
     return username
 
@@ -188,6 +191,15 @@ def authenticate(username: str, password: str) -> str | None:
     return None
 
 
+def user_allowed_tables(username: str) -> set[str] | None:
+    """The set of tables this user may query, or None if unrestricted."""
+    with _Session() as s:
+        user = s.scalar(select(User).where(User.username == (username or "").strip()))
+    if not user or not user.allowed_tables:
+        return None
+    return {t.strip().lower() for t in user.allowed_tables.split(",") if t.strip()}
+
+
 def init_auth_db() -> None:
     """Create the table (idempotent) and seed the demo account. Safe to call repeatedly."""
     enforce_secret_policy()  # fail fast in production if the JWT secret is weak
@@ -196,6 +208,12 @@ def init_auth_db() -> None:
         if path and path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     Base.metadata.create_all(_engine)
+
+    # Lightweight migration: add allowed_tables to a users table created before RBAC.
+    from sqlalchemy import inspect as _inspect
+    if "allowed_tables" not in {c["name"] for c in _inspect(_engine).get_columns("users")}:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN allowed_tables VARCHAR(500)")
 
     s = get_settings()
     if s.auth_seed_demo:

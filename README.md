@@ -143,8 +143,10 @@ SELECT-only `app_readonly` role.
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
-| `POST /v1/auth/register` | — | create an account → access token |
-| `POST /v1/auth/login` | — | username + password → access token |
+| `POST /v1/auth/register` | — | create an account → access + refresh token |
+| `POST /v1/auth/login` | — | username + password → access + refresh token |
+| `POST /v1/auth/refresh` | — | refresh token → a fresh access token (rotates) |
+| `POST /v1/auth/logout` | token | revoke the current token server-side |
 | `GET /v1/auth/me` | token | the current user |
 | `POST /v1/query` | token | question → SQL, results, confidence, warnings |
 | `POST /v1/feedback` | token | mark a past result correct/incorrect (the flywheel) |
@@ -155,6 +157,13 @@ Auth is JWT Bearer tokens over a bcrypt-hashed users table (a separate SQLite db
 reseeding the demo data never touches accounts). A **demo account** is seeded on
 startup — username `demo`, password `demo12345` — or register your own. Everything
 under `/v1` except the auth endpoints requires a token.
+
+**Security hardening** layered on top: login rate-limiting + lockout, prompt- and
+SQL-injection screening of the question, per-user table authorization (a user's
+`allowed_tables` restricts which tables their queries may touch), server-side token
+revocation + refresh, PII redaction in results/logs, password-strength policy, a
+strong-secret check in production, and response security headers with a nonce-based
+CSP on `/login`. See [.env.example](.env.example) for the toggles.
 
 ```bash
 # log in (or POST the same body to /v1/auth/register), grab the token

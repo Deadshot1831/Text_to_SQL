@@ -7,6 +7,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from app.audit import log_event
+from app.authz import forbidden_tables
 from app.confidence import compute_confidence, schema_coverage
 from app.config import get_settings
 from app.db import dialect_name, get_engine
@@ -39,7 +40,7 @@ def get_snapshot() -> SchemaSnapshot:
     return _snapshot_for(get_settings().database_url)
 
 
-def answer(req: QueryRequest) -> QueryResponse:
+def answer(req: QueryRequest, allowed_tables: set[str] | None = None) -> QueryResponse:
     q = req.question.strip()
     engine = get_engine()
     snap = get_snapshot()
@@ -81,6 +82,17 @@ def answer(req: QueryRequest) -> QueryResponse:
         return QueryResponse(
             question=q, status="blocked", generated=gen, guardrail=guard,
             error="; ".join(guard.violations), warnings=guard.warnings,
+        )
+
+    # Security — per-user table authorization (RBAC), before we touch the database.
+    denied = forbidden_tables(guard.final_sql, allowed_tables)
+    if denied:
+        reason = "not authorized to access table(s): " + ", ".join(denied)
+        log_event("rbac_blocked", question=q, tables=", ".join(denied))
+        return QueryResponse(
+            question=q, status="blocked", generated=gen,
+            guardrail=GuardrailResult(allowed=False, violations=[reason], final_sql=guard.final_sql),
+            error=reason,
         )
 
     # Phase 2.4 — execute in the read-only sandbox.

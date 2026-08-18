@@ -208,7 +208,7 @@ def me(user: str = Depends(auth.get_current_user)) -> dict:
 # ---------------- protected app ----------------
 @app.post("/v1/query", response_model=QueryResponse)
 def query(req: QueryRequest, user: str = Depends(auth.get_current_user)) -> QueryResponse:
-    resp = answer(req)
+    resp = answer(req, allowed_tables=auth.user_allowed_tables(user))
     resp.query_id = store.record_query(resp)
     return resp
 
