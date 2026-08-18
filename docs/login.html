@@ -209,7 +209,9 @@
   $("tab-in").addEventListener("click", ()=>setMode("login"));
   $("tab-up").addEventListener("click", ()=>setMode("register"));
   $("form").addEventListener("submit", submit);
-  $("logout").addEventListener("click", ()=>{
+  $("logout").addEventListener("click", async ()=>{
+    const token = localStorage.getItem(KEY);
+    if(token){ try{ await fetch(API + "/v1/auth/logout", {method:"POST", headers:{authorization:"Bearer "+token}}); }catch(_){} }
     localStorage.removeItem(KEY); localStorage.removeItem(UKEY); showAuth(); setMode("login");
   });
   $("copy").addEventListener("click", async ()=>{

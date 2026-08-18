@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     # Auth
     auth_db_url: str = "sqlite:///./data/auth.db"
     auth_secret_key: str = ""  # empty -> random per-process secret (see app/auth.py)
-    auth_token_ttl_min: int = 720  # 12 hours
+    auth_token_ttl_min: int = 720  # access-token lifetime (12 hours)
+    auth_refresh_ttl_min: int = 10080  # refresh-token lifetime (7 days)
     auth_seed_demo: bool = True
     auth_demo_user: str = "demo"
     auth_demo_password: str = "demo12345"

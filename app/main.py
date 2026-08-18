@@ -131,6 +131,23 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+    refresh_token: str | None = None
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
+class LogoutIn(BaseModel):
+    refresh_token: str | None = None
+
+
+def _tokens_for(user: str) -> TokenOut:
+    return TokenOut(
+        access_token=auth.create_access_token(user),
+        refresh_token=auth.create_refresh_token(user),
+        username=user,
+    )
 
 
 @app.post("/v1/auth/register", response_model=TokenOut)
@@ -143,7 +160,7 @@ def register(body: RegisterIn) -> TokenOut:
         auth.create_user(body.username, body.password)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return TokenOut(access_token=auth.create_token(body.username), username=body.username)
+    return _tokens_for(body.username)
 
 
 @app.post("/v1/auth/login", response_model=TokenOut)
@@ -161,7 +178,26 @@ def login(body: LoginIn, request: Request) -> TokenOut:
         _login_limiter.register_failure(key)
         raise HTTPException(status_code=401, detail="invalid username or password")
     _login_limiter.reset(key)
-    return TokenOut(access_token=auth.create_token(user), username=user)
+    return _tokens_for(user)
+
+
+@app.post("/v1/auth/refresh", response_model=TokenOut)
+def refresh(body: RefreshIn) -> TokenOut:
+    payload = auth.decode(body.refresh_token)
+    if not payload or payload.get("type") != "refresh" or auth.is_revoked(payload.get("jti", "")):
+        raise HTTPException(status_code=401, detail="invalid or expired refresh token")
+    auth.revoke_payload(payload)  # rotate: the old refresh token can't be reused
+    return _tokens_for(payload["sub"])
+
+
+@app.post("/v1/auth/logout")
+def logout(body: LogoutIn | None = None, payload: dict = Depends(auth.get_current_payload)) -> dict:
+    auth.revoke_payload(payload)  # invalidate this access token server-side
+    if body and body.refresh_token:
+        rp = auth.decode(body.refresh_token)
+        if rp and rp.get("type") == "refresh":
+            auth.revoke_payload(rp)
+    return {"status": "logged out"}
 
 
 @app.get("/v1/auth/me")

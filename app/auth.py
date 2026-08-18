@@ -12,6 +12,8 @@ import datetime as dt
 import logging
 import os
 import secrets
+import threading
+import time
 
 import bcrypt
 import jwt
@@ -102,28 +104,67 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 # ---- tokens ----
+# Two token types: short-lived "access" tokens for API calls and longer-lived
+# "refresh" tokens that mint new access tokens. Each carries a unique jti so it
+# can be revoked server-side (real logout), unlike a plain stateless JWT.
 def _secret() -> str:
     return get_settings().auth_secret_key or _RUNTIME_SECRET
 
 
-def create_token(username: str) -> str:
+def _make_token(username: str, kind: str, ttl_min: int) -> str:
     now = dt.datetime.now(dt.timezone.utc)
     payload = {
         "sub": username,
+        "type": kind,
+        "jti": secrets.token_urlsafe(9),
         "iat": now,
-        "exp": now + dt.timedelta(minutes=get_settings().auth_token_ttl_min),
+        "exp": now + dt.timedelta(minutes=ttl_min),
     }
     return jwt.encode(payload, _secret(), algorithm=_ALGO)
 
 
-def decode_token(token: str) -> str | None:
-    """Return the username for a valid, unexpired token, else None."""
+def create_access_token(username: str) -> str:
+    return _make_token(username, "access", get_settings().auth_token_ttl_min)
+
+
+def create_refresh_token(username: str) -> str:
+    return _make_token(username, "refresh", get_settings().auth_refresh_ttl_min)
+
+
+def decode(token: str) -> dict | None:
+    """Return the full payload for a valid, unexpired, correctly-signed token, else None."""
     try:
-        data = jwt.decode(token, _secret(), algorithms=[_ALGO])
-        sub = data.get("sub")
-        return sub if isinstance(sub, str) else None
+        return jwt.decode(token, _secret(), algorithms=[_ALGO])
     except jwt.PyJWTError:
         return None
+
+
+# ---- revocation (real logout) ----
+# jti -> expiry timestamp. Pruned on read so it can't grow without bound.
+# ponytail: per-process dict; back it with Redis/DB for multi-instance deployments.
+_revoked: dict[str, float] = {}
+_revoked_lock = threading.Lock()
+
+
+def revoke(jti: str, exp) -> None:
+    if not jti:
+        return
+    exp_ts = exp.timestamp() if isinstance(exp, dt.datetime) else float(exp)
+    with _revoked_lock:
+        _revoked[jti] = exp_ts
+
+
+def revoke_payload(payload: dict) -> None:
+    revoke(payload.get("jti", ""), payload.get("exp", 0))
+
+
+def is_revoked(jti: str) -> bool:
+    now = time.time()
+    with _revoked_lock:
+        for k, e in list(_revoked.items()):
+            if e < now:
+                _revoked.pop(k, None)
+        return jti in _revoked
 
 
 # ---- user store ----
@@ -178,10 +219,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer  # noqa: E
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
+def get_current_payload(
     cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> str:
-    """Resolve the caller's username from a Bearer token, or raise 401."""
+) -> dict:
+    """Validate a Bearer *access* token and return its payload, or raise 401.
+
+    Rejects refresh tokens (wrong type) and revoked tokens (logged out)."""
     unauth = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="not authenticated",
@@ -189,7 +232,14 @@ def get_current_user(
     )
     if cred is None or (cred.scheme or "").lower() != "bearer":
         raise unauth
-    username = decode_token(cred.credentials)
-    if not username:
+    payload = decode(cred.credentials)
+    if not payload or payload.get("type") != "access" or not payload.get("sub"):
         raise unauth
-    return username
+    if is_revoked(payload.get("jti", "")):
+        raise unauth
+    return payload
+
+
+def get_current_user(payload: dict = Depends(get_current_payload)) -> str:
+    """The caller's username (built on the validated access-token payload)."""
+    return payload["sub"]

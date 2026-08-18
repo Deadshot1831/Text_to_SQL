@@ -49,6 +49,35 @@ def test_malformed_token_rejected():
     assert client.get("/v1/auth/me", headers={"Authorization": "Bearer not.a.real.token"}).status_code == 401
 
 
+def test_logout_revokes_access_token():
+    u = _user()
+    r = client.post("/v1/auth/register", json={"username": u, "password": "Val1dphrase"}).json()
+    h = {"Authorization": f"Bearer {r['access_token']}"}
+    assert client.get("/v1/auth/me", headers=h).status_code == 200
+    assert client.post("/v1/auth/logout", headers=h).status_code == 200
+    assert client.get("/v1/auth/me", headers=h).status_code == 401  # revoked, not just expired
+
+
+def test_refresh_rotates_and_issues_new_access():
+    u = _user()
+    r = client.post("/v1/auth/register", json={"username": u, "password": "Val1dphrase"}).json()
+    refresh_tok = r["refresh_token"]
+    assert refresh_tok
+    r2 = client.post("/v1/auth/refresh", json={"refresh_token": refresh_tok})
+    assert r2.status_code == 200
+    new_access = r2.json()["access_token"]
+    assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {new_access}"}).status_code == 200
+    # the old refresh token was rotated -> cannot be reused
+    assert client.post("/v1/auth/refresh", json={"refresh_token": refresh_tok}).status_code == 401
+
+
+def test_refresh_token_is_not_accepted_as_access():
+    u = _user()
+    r = client.post("/v1/auth/register", json={"username": u, "password": "Val1dphrase"}).json()
+    # a refresh token must not authenticate protected endpoints
+    assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {r['refresh_token']}"}).status_code == 401
+
+
 def test_password_is_hashed_not_stored_plaintext():
     h = auth.hash_password("hunter2pw")
     assert h != "hunter2pw" and h.startswith("$2")

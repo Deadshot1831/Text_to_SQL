@@ -32,6 +32,12 @@ def _headers() -> dict:
 
 
 def _logout(rerun: bool = False) -> None:
+    tok = st.session_state.get("token")
+    if tok:  # best-effort server-side revocation
+        try:
+            httpx.post(f"{API}/v1/auth/logout", headers={"Authorization": f"Bearer {tok}"}, timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
     for k in ("token", "user"):
         st.session_state.pop(k, None)
     if rerun:
