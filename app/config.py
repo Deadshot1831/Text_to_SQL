@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     auth_seed_demo: bool = True
     auth_demo_user: str = "demo"
     auth_demo_password: str = "demo12345"
+    auth_demo_is_admin: bool = True  # seeded demo account can manage users' table access
     # Login brute-force protection: lock a (username+IP) after N failures within the window.
     auth_max_failures: int = 5
     auth_failure_window_seconds: int = 900

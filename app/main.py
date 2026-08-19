@@ -202,7 +202,31 @@ def logout(body: LogoutIn | None = None, payload: dict = Depends(auth.get_curren
 
 @app.get("/v1/auth/me")
 def me(user: str = Depends(auth.get_current_user)) -> dict:
-    return {"username": user}
+    return {"username": user, "is_admin": auth.user_is_admin(user)}
+
+
+# ---------------- admin: manage users' table access ----------------
+class UserPatch(BaseModel):
+    allowed_tables: list[str] | None = None  # present -> set (null/empty = unrestricted)
+    is_admin: bool | None = None
+
+
+@app.get("/v1/admin/users")
+def admin_list_users(admin: str = Depends(auth.get_admin_user)) -> list[dict]:
+    return auth.list_users()
+
+
+@app.patch("/v1/admin/users/{username}")
+def admin_update_user(username: str, body: UserPatch, admin: str = Depends(auth.get_admin_user)) -> dict:
+    fields = body.model_fields_set
+    try:
+        if "allowed_tables" in fields:
+            auth.set_allowed_tables(username, body.allowed_tables)
+        if "is_admin" in fields and body.is_admin is not None:
+            auth.set_admin(username, body.is_admin)
+        return auth.get_user_public(username)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ---------------- protected app ----------------

@@ -41,6 +41,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(default=True)
+    is_admin: Mapped[bool] = mapped_column(default=False)  # may manage other users' access
     # Comma-separated table allow-list for RBAC. NULL/empty = unrestricted (all tables).
     allowed_tables: Mapped[str | None] = mapped_column(String(500), default=None, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
@@ -170,7 +171,9 @@ def is_revoked(jti: str) -> bool:
 
 
 # ---- user store ----
-def create_user(username: str, password: str, allowed_tables: list[str] | None = None) -> str:
+def create_user(
+    username: str, password: str, allowed_tables: list[str] | None = None, is_admin: bool = False
+) -> str:
     username = (username or "").strip()
     if not username or not password:
         raise ValueError("username and password are required")
@@ -178,7 +181,8 @@ def create_user(username: str, password: str, allowed_tables: list[str] | None =
     with _Session() as s:
         if s.scalar(select(User).where(User.username == username)):
             raise ValueError("username already taken")
-        s.add(User(username=username, password_hash=hash_password(password), allowed_tables=at))
+        s.add(User(username=username, password_hash=hash_password(password),
+                   allowed_tables=at, is_admin=is_admin))
         s.commit()
     return username
 
@@ -200,6 +204,51 @@ def user_allowed_tables(username: str) -> set[str] | None:
     return {t.strip().lower() for t in user.allowed_tables.split(",") if t.strip()}
 
 
+# ---- admin / user management ----
+def _public(u: User) -> dict:
+    tables = ([t.strip() for t in u.allowed_tables.split(",") if t.strip()]
+              if u.allowed_tables else None)
+    return {"username": u.username, "is_admin": bool(u.is_admin), "allowed_tables": tables}
+
+
+def get_user_public(username: str) -> dict:
+    with _Session() as s:
+        u = s.scalar(select(User).where(User.username == (username or "").strip()))
+    if not u:
+        raise ValueError("user not found")
+    return _public(u)
+
+
+def list_users() -> list[dict]:
+    with _Session() as s:
+        return [_public(u) for u in s.scalars(select(User).order_by(User.id)).all()]
+
+
+def set_allowed_tables(username: str, tables: list[str] | None) -> None:
+    at = ",".join(t.strip() for t in tables) if tables else None
+    with _Session() as s:
+        u = s.scalar(select(User).where(User.username == (username or "").strip()))
+        if not u:
+            raise ValueError("user not found")
+        u.allowed_tables = at
+        s.commit()
+
+
+def set_admin(username: str, flag: bool) -> None:
+    with _Session() as s:
+        u = s.scalar(select(User).where(User.username == (username or "").strip()))
+        if not u:
+            raise ValueError("user not found")
+        u.is_admin = bool(flag)
+        s.commit()
+
+
+def user_is_admin(username: str) -> bool:
+    with _Session() as s:
+        u = s.scalar(select(User).where(User.username == (username or "").strip()))
+    return bool(u and u.is_admin)
+
+
 def init_auth_db() -> None:
     """Create the table (idempotent) and seed the demo account. Safe to call repeatedly."""
     enforce_secret_policy()  # fail fast in production if the JWT secret is weak
@@ -209,19 +258,27 @@ def init_auth_db() -> None:
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     Base.metadata.create_all(_engine)
 
-    # Lightweight migration: add allowed_tables to a users table created before RBAC.
+    # Lightweight migrations: add columns to a users table created before these features.
     from sqlalchemy import inspect as _inspect
-    if "allowed_tables" not in {c["name"] for c in _inspect(_engine).get_columns("users")}:
-        with _engine.begin() as conn:
+    cols = {c["name"] for c in _inspect(_engine).get_columns("users")}
+    with _engine.begin() as conn:
+        if "allowed_tables" not in cols:
             conn.exec_driver_sql("ALTER TABLE users ADD COLUMN allowed_tables VARCHAR(500)")
+        if "is_admin" not in cols:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0")
 
     s = get_settings()
     if s.auth_seed_demo:
         try:
-            create_user(s.auth_demo_user, s.auth_demo_password)
+            create_user(s.auth_demo_user, s.auth_demo_password, is_admin=s.auth_demo_is_admin)
             log.info("seeded demo account '%s'", s.auth_demo_user)
         except ValueError:
             pass  # already exists
+        if s.auth_demo_is_admin:  # ensure demo is admin even on a migrated db
+            try:
+                set_admin(s.auth_demo_user, True)
+            except ValueError:
+                pass
     if not s.auth_secret_key:
         log.warning(
             "AUTH_SECRET_KEY is not set — using a random per-process secret; "
@@ -261,3 +318,10 @@ def get_current_payload(
 def get_current_user(payload: dict = Depends(get_current_payload)) -> str:
     """The caller's username (built on the validated access-token payload)."""
     return payload["sub"]
+
+
+def get_admin_user(user: str = Depends(get_current_user)) -> str:
+    """Like get_current_user, but 403s unless the caller is an admin."""
+    if not user_is_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin privilege required")
+    return user

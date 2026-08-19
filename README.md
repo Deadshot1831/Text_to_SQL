@@ -148,6 +148,8 @@ SELECT-only `app_readonly` role.
 | `POST /v1/auth/refresh` | — | refresh token → a fresh access token (rotates) |
 | `POST /v1/auth/logout` | token | revoke the current token server-side |
 | `GET /v1/auth/me` | token | the current user |
+| `GET /v1/admin/users` | admin | list users with their access |
+| `PATCH /v1/admin/users/{username}` | admin | set a user's `allowed_tables` / `is_admin` |
 | `POST /v1/query` | token | question → SQL, results, confidence, warnings |
 | `POST /v1/feedback` | token | mark a past result correct/incorrect (the flywheel) |
 | `GET /v1/schema` | token | introspected schema (tables, keys, sample values) |
