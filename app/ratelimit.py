@@ -46,6 +46,35 @@ class FailureLimiter:
             self._fails.pop(key, None)
 
 
+class RedisFailureLimiter:
+    """Same interface as FailureLimiter, backed by Redis so a lockout is shared
+    across API instances. Fixed-window counter (resets when the window expires)."""
+
+    def __init__(self, client, max_failures: int, window_seconds: int):
+        self.client = client
+        self.max = max_failures
+        self.window = window_seconds
+
+    def _key(self, key: str) -> str:
+        return f"login_fail:{key}"
+
+    def is_locked(self, key: str) -> tuple[bool, int]:
+        k = self._key(key)
+        n = int(self.client.get(k) or 0)
+        if n >= self.max:
+            ttl = self.client.ttl(k)
+            return True, ttl if (ttl and ttl > 0) else self.window
+        return False, 0
+
+    def register_failure(self, key: str) -> None:
+        k = self._key(key)
+        if self.client.incr(k) == 1:
+            self.client.expire(k, self.window)
+
+    def reset(self, key: str) -> None:
+        self.client.delete(self._key(key))
+
+
 if __name__ == "__main__":  # tiny self-check
     lim = FailureLimiter(max_failures=3, window_seconds=60)
     assert lim.is_locked("k") == (False, 0)

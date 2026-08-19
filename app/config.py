@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     auth_max_failures: int = 5
     auth_failure_window_seconds: int = 900
 
+    # Optional Redis: when set, the rate-limit and token-revocation stores use Redis
+    # instead of per-process memory, so they work across multiple API instances.
+    redis_url: str = ""
+
     # CORS — comma-separated origins allowed to call the API cross-origin.
     # Empty (default) = same-origin only (the /login page is served by the API).
     # Set this to host the login page / a frontend on a different origin.

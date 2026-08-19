@@ -16,6 +16,7 @@ psycopg[binary]==3.2.3    # PostgreSQL driver (docker-compose)
 # --- Auth ---
 bcrypt==4.2.1             # password hashing
 PyJWT==2.10.1             # signed access tokens
+redis==5.2.1             # optional shared store for rate-limit + token revocation (multi-instance)
 
 # --- LLM providers (optional at runtime; stub fallback if unset) ---
 anthropic==0.42.0
@@ -27,3 +28,4 @@ streamlit==1.41.1
 # --- Dev / test ---
 pytest==8.3.4
 httpx==0.28.1             # FastAPI TestClient
+fakeredis==2.26.1        # in-process Redis for tests (no server needed)

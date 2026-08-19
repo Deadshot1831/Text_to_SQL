@@ -26,11 +26,19 @@ from app import auth, store
 from app.config import get_settings
 from app.models import QueryRequest, QueryResponse
 from app.pipeline import answer, get_snapshot
-from app.ratelimit import FailureLimiter
+from app.ratelimit import FailureLimiter, RedisFailureLimiter
+from app.redis_client import get_redis
 
-_login_limiter = FailureLimiter(
-    get_settings().auth_max_failures, get_settings().auth_failure_window_seconds
-)
+
+def _make_login_limiter():
+    s = get_settings()
+    client = get_redis()
+    if client is not None:  # shared lockout across instances
+        return RedisFailureLimiter(client, s.auth_max_failures, s.auth_failure_window_seconds)
+    return FailureLimiter(s.auth_max_failures, s.auth_failure_window_seconds)
+
+
+_login_limiter = _make_login_limiter()
 
 
 def _throttle_key(username: str, request: Request) -> str:

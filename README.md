@@ -165,7 +165,9 @@ SQL-injection screening of the question, per-user table authorization (a user's
 `allowed_tables` restricts which tables their queries may touch), server-side token
 revocation + refresh, PII redaction in results/logs, password-strength policy, a
 strong-secret check in production, and response security headers with a nonce-based
-CSP on `/login`. See [.env.example](.env.example) for the toggles.
+CSP on `/login`. See [.env.example](.env.example) for the toggles. The rate-limit and
+token-revocation stores are per-process by default; set `REDIS_URL` to share them
+across multiple API instances (docker-compose wires a Redis service automatically).
 
 ```bash
 # log in (or POST the same body to /v1/auth/register), grab the token

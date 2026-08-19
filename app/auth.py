@@ -21,6 +21,7 @@ from sqlalchemy import String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.config import get_settings
+from app.redis_client import get_redis
 
 log = logging.getLogger("app.auth")
 
@@ -143,18 +144,40 @@ def decode(token: str) -> dict | None:
 
 
 # ---- revocation (real logout) ----
-# jti -> expiry timestamp. Pruned on read so it can't grow without bound.
-# ponytail: per-process dict; back it with Redis/DB for multi-instance deployments.
-_revoked: dict[str, float] = {}
-_revoked_lock = threading.Lock()
+# Uses Redis when REDIS_URL is set (shared across API instances), else a per-process
+# dict pruned on read. ponytail: only the backend changes; the API below is stable.
+class _Revocations:
+    def __init__(self, client=None):
+        self.client = client
+        self._mem: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def revoke(self, jti: str, exp) -> None:
+        if not jti:
+            return
+        exp_ts = exp.timestamp() if isinstance(exp, dt.datetime) else float(exp)
+        if self.client is not None:
+            self.client.set(f"revoked:{jti}", "1", ex=max(int(exp_ts - time.time()), 1))
+            return
+        with self._lock:
+            self._mem[jti] = exp_ts
+
+    def is_revoked(self, jti: str) -> bool:
+        if self.client is not None:
+            return bool(self.client.exists(f"revoked:{jti}"))
+        now = time.time()
+        with self._lock:
+            for k, e in list(self._mem.items()):
+                if e < now:
+                    self._mem.pop(k, None)
+            return jti in self._mem
+
+
+_revocations = _Revocations(get_redis())
 
 
 def revoke(jti: str, exp) -> None:
-    if not jti:
-        return
-    exp_ts = exp.timestamp() if isinstance(exp, dt.datetime) else float(exp)
-    with _revoked_lock:
-        _revoked[jti] = exp_ts
+    _revocations.revoke(jti, exp)
 
 
 def revoke_payload(payload: dict) -> None:
@@ -162,12 +185,7 @@ def revoke_payload(payload: dict) -> None:
 
 
 def is_revoked(jti: str) -> bool:
-    now = time.time()
-    with _revoked_lock:
-        for k, e in list(_revoked.items()):
-            if e < now:
-                _revoked.pop(k, None)
-        return jti in _revoked
+    return _revocations.is_revoked(jti)
 
 
 # ---- user store ----
